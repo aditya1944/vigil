@@ -132,12 +132,26 @@ private slots:
     {
         Backend b;
         QCOMPARE(b.activeMode(), QString("live"));
+
+        QSignalSpy modeSpy(&b, &Backend::activeModeChanged);
         b.setActiveMode("playback");
         QCOMPARE(b.activeMode(), QString("playback"));
+        QCOMPARE(modeSpy.count(), 1);
+
         b.enterPlayback(10);
         QCOMPARE(b.playbackChannel(), 10);
         QCOMPARE(b.playbackCamera().value("name").toString(), QString("Farm-2 inside right"));
         QVERIFY(!b.playbackUrl().isEmpty());
+
+        b.setActiveMode("live");
+        QCOMPARE(b.activeMode(), QString("live"));
+        QCOMPARE(modeSpy.count(), 2);
+
+        // Re-entering playback for a different channel
+        b.enterPlayback(3);
+        QCOMPARE(b.activeMode(), QString("playback"));
+        QCOMPARE(b.playbackChannel(), 3);
+        QCOMPARE(modeSpy.count(), 3);
     }
 
     void backendPlaybackClipParsing()

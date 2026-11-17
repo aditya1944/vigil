@@ -89,7 +89,7 @@ Rectangle {
     Timer {
         id: wallClockTimer
         interval: 1000
-        running: true
+        running: backend.activeMode === "playback"
         repeat: true
         onTriggered: {
             var now = new Date()
@@ -502,18 +502,23 @@ Rectangle {
                     id: playbackPlayer
                     videoOutput: playbackVideoOutput
                     audioOutput: playbackAudioOutput
-                    source: backend.playbackUrl
+                    source: (backend.activeMode === "playback") ? backend.playbackUrl : ""
 
                     onErrorOccurred: (error, errorString) => {
-                        if (backend.playbackUrl !== "") {
+                        if (backend.activeMode === "playback" && backend.playbackUrl !== "") {
                             console.log("Playback error:", errorString)
                         }
                     }
 
                     Component.onCompleted: {
-                        if (backend.playbackUrl !== "") {
+                        if (backend.activeMode === "playback" && backend.playbackUrl !== "") {
                             play()
                         }
+                    }
+
+                    Component.onDestruction: {
+                        stop()
+                        source = ""
                     }
                 }
 
@@ -521,9 +526,23 @@ Rectangle {
                     target: backend
                     function onPlaybackUrlChanged() {
                         playbackPlayer.stop()
-                        if (backend.playbackUrl !== "") {
+                        if (backend.activeMode === "playback" && backend.playbackUrl !== "") {
                             playbackPlayer.source = backend.playbackUrl
                             playbackPlayer.play()
+                        } else {
+                            playbackPlayer.source = ""
+                        }
+                    }
+                    function onActiveModeChanged() {
+                        if (backend.activeMode !== "playback") {
+                            playbackPlayer.stop()
+                            playbackPlayer.source = ""
+                        } else {
+                            if (backend.playbackUrl !== "") {
+                                playbackPlayer.stop()
+                                playbackPlayer.source = backend.playbackUrl
+                                playbackPlayer.play()
+                            }
                         }
                     }
                 }

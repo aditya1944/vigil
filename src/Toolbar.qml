@@ -39,7 +39,7 @@ Rectangle {
                 text: qsTr("⏪ Playback")
                 flat: backend.activeMode !== "playback"
                 highlighted: backend.activeMode === "playback"
-                onClicked: backend.enterPlayback(backend.focusedChannel > 0 ? backend.focusedChannel : 1)
+                onClicked: backend.enterPlayback(backend.focusedChannel > 0 ? backend.focusedChannel : (backend.playbackChannel > 0 ? backend.playbackChannel : 1))
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Review recorded NVR footage")
             }

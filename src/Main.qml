@@ -217,7 +217,7 @@ ApplicationWindow {
                                 Layout.fillHeight: true
                                 cameraData: backend.focusedCamera
                                 isFocused: true
-                                active: backend.focusedChannel > 0
+                                active: (backend.activeMode === "live") && (backend.focusedChannel > 0)
                             }
                         }
                     }
@@ -249,7 +249,7 @@ ApplicationWindow {
                                     cameraData: modelData
                                     isFocused: false
                                     staggerIndex: index
-                                    active: backend.focusedChannel <= 0
+                                    active: (backend.activeMode === "live") && (backend.focusedChannel <= 0)
                                 }
                             }
                         }

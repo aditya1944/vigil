@@ -82,9 +82,10 @@ Rectangle {
     }
 
     function updateStream() {
+        connectTimer.stop()
+        reconnectTimer.stop()
         player.stop()
         player.source = ""
-        reconnectTimer.stop()
         if (root.active && root.targetUrl !== "") {
             connectTimer.restart()
         }
