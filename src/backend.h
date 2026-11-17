@@ -54,6 +54,8 @@ class Backend : public QObject {
     Q_PROPERTY(bool isSavingRecording READ isSavingRecording NOTIFY isSavingRecordingChanged)
     Q_PROPERTY(QString lastSavedRecordingPath READ lastSavedRecordingPath NOTIFY lastSavedRecordingPathChanged)
     Q_PROPERTY(QString recordingsDir READ recordingsDir CONSTANT)
+    Q_PROPERTY(QStringList availableDates READ availableDates NOTIFY availableDatesChanged)
+    Q_PROPERTY(bool queryingDates READ queryingDates NOTIFY queryingDatesChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -89,6 +91,8 @@ public:
     bool isSavingRecording() const { return m_isSavingRecording; }
     QString lastSavedRecordingPath() const { return m_lastSavedRecordingPath; }
     QString recordingsDir() const { return m_recordingsDir; }
+    QStringList availableDates() const { return m_availableDates; }
+    bool queryingDates() const { return m_queryingDates; }
 
     Q_INVOKABLE void setCurrentGroup(const QString &group);
     Q_INVOKABLE void setGridCols(int cols);
@@ -119,6 +123,8 @@ public:
     Q_INVOKABLE void enterPlayback(int channel);
     Q_INVOKABLE void startPlayback(int channel, const QString &date, const QString &startTime, const QString &endTime);
     Q_INVOKABLE void queryRecordedClips(int channel, const QString &date);
+    Q_INVOKABLE void queryAvailableRecordingDates(int channel);
+    Q_INVOKABLE QStringList parseDatesResponse(const QString &text) const;
     Q_INVOKABLE void openExternalPlaybackMpv(int channel, const QString &date, const QString &startTime, const QString &endTime);
     Q_INVOKABLE void takePlaybackSnapshot(int channel, const QString &date, const QString &time);
     Q_INVOKABLE void saveRecording(int channel, const QString &date, const QString &startTime, const QString &endTime);
@@ -156,6 +162,8 @@ signals:
     void queryingClipsChanged();
     void isSavingRecordingChanged();
     void lastSavedRecordingPathChanged();
+    void availableDatesChanged();
+    void queryingDatesChanged();
 
 private:
     void initDefaultCameras();
@@ -206,4 +214,7 @@ private:
     bool m_isSavingRecording = false;
     QString m_lastSavedRecordingPath;
     QProcess *m_saveProcess = nullptr;
+    QStringList m_availableDates;
+    bool m_queryingDates = false;
+    QMap<int, QStringList> m_cachedAvailableDates;
 };

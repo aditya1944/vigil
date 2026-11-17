@@ -185,6 +185,36 @@ private slots:
         b.cancelSaveRecording();
         QCOMPARE(b.isSavingRecording(), false);
     }
+
+    void backendParseDatesResponse()
+    {
+        Backend b;
+        const QString sampleNvrResponse =
+            "found=3\n"
+            "items[0].StartTime=2026-11-13 10:00:00\n"
+            "items[0].EndTime=2026-11-13 11:00:00\n"
+            // Midnight-spanning clip: should include both 2026-11-14 and 2026-11-15
+            "items[1].StartTime=2026-11-14 23:59:58\n"
+            "items[1].EndTime=2026-11-15 00:00:05\n"
+            // 1-second clip on 2026-11-17: must be kept!
+            "items[2].StartTime=2026-11-17 14:30:00\n"
+            "items[2].EndTime=2026-11-17 14:30:01\n";
+
+        const QStringList dates = b.parseDatesResponse(sampleNvrResponse);
+        QCOMPARE(dates.size(), 4);
+        // Sorted descending (newest first)
+        QCOMPARE(dates.at(0), QString("2026-11-17"));
+        QCOMPARE(dates.at(1), QString("2026-11-15"));
+        QCOMPARE(dates.at(2), QString("2026-11-14"));
+        QCOMPARE(dates.at(3), QString("2026-11-13"));
+    }
+
+    void backendAvailableDatesDefault()
+    {
+        Backend b;
+        QVERIFY(!b.availableDates().isEmpty());
+        QCOMPARE(b.availableDates().first(), QDate::currentDate().toString("yyyy-MM-dd"));
+    }
 };
 
 QTEST_MAIN(CctvTests)

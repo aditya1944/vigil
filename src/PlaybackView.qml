@@ -55,6 +55,48 @@ Rectangle {
         return y + "-" + (m < 10 ? "0" + m : "" + m) + "-" + (day < 10 ? "0" + day : "" + day)
     }
 
+    function todayDateStr() {
+        var today = new Date()
+        var y = today.getFullYear()
+        var m = today.getMonth() + 1
+        var d = today.getDate()
+        return y + "-" + (m < 10 ? "0" + m : "" + m) + "-" + (d < 10 ? "0" + d : "" + d)
+    }
+
+    readonly property bool isViewingToday: backend.playbackDate === todayDateStr()
+
+    function formatDayDisplay(dateStr) {
+        if (!dateStr) return ""
+        var today = todayDateStr()
+        if (dateStr === today) return dateStr + " (Today)"
+        var yest = addDaysToDate(today, -1)
+        if (dateStr === yest) return dateStr + " (Yesterday)"
+        var parts = dateStr.split("-")
+        if (parts.length === 3) {
+            var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]))
+            var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            if (!isNaN(d.getDay())) return dateStr + " (" + days[d.getDay()] + ")"
+        }
+        return dateStr
+    }
+
+    // Current wall-clock time tracking (updates every second)
+    property real currentWallClockSecs: {
+        var now = new Date()
+        return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+    }
+
+    Timer {
+        id: wallClockTimer
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: {
+            var now = new Date()
+            root.currentWallClockSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+        }
+    }
+
     // Playback control and navigation functions
     function togglePlayPause() {
         if (playbackPlayer.playbackState === MediaPlayer.PlayingState) {
@@ -271,66 +313,131 @@ Rectangle {
 
                     Rectangle { width: 1; height: 24; color: "#2d2d3d" }
 
-                    // Date Picker
-                    Text { text: qsTr("Date:"); color: "#9ca3af"; font.pixelSize: 12 }
+                    // Date Picker (Only Days With Available Recordings)
+                    Text { text: qsTr("Day:"); color: "#9ca3af"; font.pixelSize: 12 }
 
                     Button {
+                        id: prevDayBtn
                         text: "◀"
                         flat: true
                         implicitWidth: 32
+                        enabled: dateCombo.currentIndex >= 0 && dateCombo.currentIndex < backend.availableDates.length - 1
                         onClicked: {
-                            var newDate = root.addDaysToDate(backend.playbackDate, -1)
-                            backend.setPlaybackDate(newDate)
-                            backend.queryRecordedClips(backend.playbackChannel, newDate)
+                            if (dateCombo.currentIndex < backend.availableDates.length - 1) {
+                                var nextIdx = dateCombo.currentIndex + 1
+                                var chosenDate = backend.availableDates[nextIdx]
+                                backend.setPlaybackDate(chosenDate)
+                                backend.queryRecordedClips(backend.playbackChannel, chosenDate)
+                            }
                         }
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Previous recorded date")
                     }
 
-                    TextField {
-                        id: dateField
-                        Layout.preferredWidth: 105
-                        text: backend.playbackDate
-                        font.pixelSize: 12
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        onEditingFinished: {
-                            backend.setPlaybackDate(text.trim())
-                            backend.queryRecordedClips(backend.playbackChannel, text.trim())
+                    ComboBox {
+                        id: dateCombo
+                        Layout.preferredWidth: 175
+                        model: backend.availableDates
+
+                        displayText: {
+                            if (backend.queryingDates && backend.availableDates.length === 0) {
+                                return qsTr("Scanning dates...")
+                            }
+                            if (backend.availableDates.length === 0) {
+                                return qsTr("No recorded dates")
+                            }
+                            return root.formatDayDisplay(backend.playbackDate)
                         }
+
+                        delegate: ItemDelegate {
+                            width: dateCombo.width
+                            text: root.formatDayDisplay(modelData)
+                            highlighted: dateCombo.highlightedIndex === index
+                        }
+
+                        function syncDateIndex() {
+                            if (!backend.availableDates) return
+                            for (var i = 0; i < backend.availableDates.length; ++i) {
+                                if (backend.availableDates[i] === backend.playbackDate) {
+                                    if (currentIndex !== i) {
+                                        currentIndex = i
+                                    }
+                                    return
+                                }
+                            }
+                        }
+
+                        onActivated: function(index) {
+                            if (index >= 0 && index < backend.availableDates.length) {
+                                var chosenDate = backend.availableDates[index]
+                                backend.setPlaybackDate(chosenDate)
+                                backend.queryRecordedClips(backend.playbackChannel, chosenDate)
+                            }
+                        }
+
+                        Connections {
+                            target: backend
+                            function onPlaybackDateChanged() {
+                                dateCombo.syncDateIndex()
+                            }
+                            function onAvailableDatesChanged() {
+                                dateCombo.syncDateIndex()
+                            }
+                        }
+
+                        Component.onCompleted: syncDateIndex()
                     }
 
                     Button {
+                        id: nextDayBtn
                         text: "▶"
                         flat: true
                         implicitWidth: 32
+                        enabled: dateCombo.currentIndex > 0
                         onClicked: {
-                            var newDate = root.addDaysToDate(backend.playbackDate, 1)
-                            backend.setPlaybackDate(newDate)
-                            backend.queryRecordedClips(backend.playbackChannel, newDate)
+                            if (dateCombo.currentIndex > 0) {
+                                var prevIdx = dateCombo.currentIndex - 1
+                                var chosenDate = backend.availableDates[prevIdx]
+                                backend.setPlaybackDate(chosenDate)
+                                backend.queryRecordedClips(backend.playbackChannel, chosenDate)
+                            }
                         }
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Next recorded date")
+                    }
+
+                    BusyIndicator {
+                        running: backend.queryingDates
+                        visible: backend.queryingDates
+                        implicitWidth: 20
+                        implicitHeight: 20
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Scanning NVR for recorded days...")
                     }
 
                     Button {
                         text: qsTr("Today")
                         flat: true
+                        enabled: backend.availableDates.indexOf(root.todayDateStr()) !== -1
+                        visible: !backend.queryingDates || backend.availableDates.length > 0
                         onClicked: {
-                            var today = new Date()
-                            var y = today.getFullYear()
-                            var m = today.getMonth() + 1
-                            var d = today.getDate()
-                            var dateStr = y + "-" + (m < 10 ? "0" + m : "" + m) + "-" + (d < 10 ? "0" + d : "" + d)
-                            backend.setPlaybackDate(dateStr)
-                            backend.queryRecordedClips(backend.playbackChannel, dateStr)
+                            var todayStr = root.todayDateStr()
+                            backend.setPlaybackDate(todayStr)
+                            backend.queryRecordedClips(backend.playbackChannel, todayStr)
                         }
+                        ToolTip.visible: hovered
+                        ToolTip.text: enabled ? qsTr("Jump to today's recordings") : qsTr("No recordings available for today on this camera")
                     }
 
                     Button {
                         text: qsTr("🔄 Refresh")
                         flat: true
                         onClicked: {
+                            backend.queryAvailableRecordingDates(backend.playbackChannel)
                             backend.queryRecordedClips(backend.playbackChannel, backend.playbackDate)
                         }
                         ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Reload recorded clips from NVR for this camera and date")
+                        ToolTip.text: qsTr("Reload available dates and recorded clips from NVR")
                     }
 
                     Rectangle { width: 1; height: 24; color: "#2d2d3d" }
@@ -832,6 +939,25 @@ Rectangle {
                         }
                     }
 
+                    // Legend: Current Time (Orange)
+                    Row {
+                        spacing: 5
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 10
+                            height: 10
+                            radius: 2
+                            color: "#f97316"
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("Current Time: %1").arg(root.secsToTime(root.currentWallClockSecs))
+                            color: "#fb923c"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                    }
+
                     Rectangle { width: 1; height: 14; color: "#2d2d3d" }
 
                     // Status display (Hover time or Current Playhead)
@@ -968,8 +1094,8 @@ Rectangle {
                                     width: Math.max(3, Math.round(((endSec - startSec) / 86400) * root.timelineTotalWidth))
                                     height: 28
                                     radius: 2
-                                    color: clipHover.containsMouse ? "#34d399" : "#10b981"
-                                    border.color: clipHover.containsMouse ? "#6ee7b7" : "#059669"
+                                    color: clipHover.hovered ? "#34d399" : "#10b981"
+                                    border.color: clipHover.hovered ? "#6ee7b7" : "#059669"
                                     border.width: 1
                                     z: 2
 
@@ -983,7 +1109,7 @@ Rectangle {
                                         opacity: 0.6
                                     }
 
-                                    ToolTip.visible: clipHover.containsMouse
+                                    ToolTip.visible: clipHover.hovered
                                     ToolTip.text: qsTr("RECORDED FOOTAGE\n%1 → %2\nDuration: %3 • Size: %4 MB").arg(modelData.startTimeDisplay).arg(modelData.endTimeDisplay).arg(modelData.durationStr).arg(modelData.sizeMb)
 
                                     HoverHandler { id: clipHover }
@@ -1048,7 +1174,63 @@ Rectangle {
                                 }
                             }
 
-                            // 5. Interactive Timeline Scrubbing MouseArea
+                            // 5. Current Wall-Clock Time Needle (Orange)
+                            Rectangle {
+                                id: currentTimeNeedle
+                                x: Math.round((root.currentWallClockSecs / 86400) * root.timelineTotalWidth) - 1
+                                y: 0
+                                width: 2
+                                height: parent.height
+                                color: "#f97316"
+                                opacity: root.isViewingToday ? 1.0 : 0.45
+                                z: 6
+
+                                // Top Flag
+                                Rectangle {
+                                    anchors.bottom: parent.top
+                                    anchors.bottomMargin: 1
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 36
+                                    height: 14
+                                    radius: 2
+                                    color: "#f97316"
+                                    opacity: root.isViewingToday ? 1.0 : 0.6
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "NOW"
+                                        color: "white"
+                                        font.pixelSize: 8
+                                        font.bold: true
+                                    }
+                                }
+
+                                // Inverted Triangle pointer on track top
+                                Canvas {
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 15
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 8
+                                    height: 5
+                                    onPaint: {
+                                        var ctx = getContext("2d")
+                                        ctx.reset()
+                                        ctx.fillStyle = "#f97316"
+                                        ctx.beginPath()
+                                        ctx.moveTo(0, 0)
+                                        ctx.lineTo(8, 0)
+                                        ctx.lineTo(4, 5)
+                                        ctx.closePath()
+                                        ctx.fill()
+                                    }
+                                }
+
+                                ToolTip.visible: currentTimeHover.hovered
+                                ToolTip.text: qsTr("CURRENT TIME (NOW)\n%1").arg(root.secsToTime(root.currentWallClockSecs))
+
+                                HoverHandler { id: currentTimeHover }
+                            }
+
+                            // 6. Interactive Timeline Scrubbing MouseArea
                             MouseArea {
                                 id: timelineMouseArea
                                 anchors.fill: parent

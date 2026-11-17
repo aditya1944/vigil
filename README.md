@@ -41,9 +41,17 @@ Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GN
     - `⬛ No Recording` (`#1c1c28` Slate Charcoal): Explicitly indicates unrecorded gaps across the 24-hour track.
     - Clicking on an unrecorded gap automatically seeks or jumps to the next available recording.
   - **Zoom & Pan Controls**: Zoom in up to 8× with `Zoom +`, `Ctrl + Wheel`, or `+` / `-` keys; snap back to full screen width anytime with `Fit 24h` or key `0`.
-  - **Playhead & Live Hover Guide**: Red playhead needle tracks active playback position with `🎯 Center` auto-centering; cyan hover needle and timestamp flag preview any point before clicking.
+  - **Playhead, Live Hover Guide & Real-Time Orange Needle**:
+    - Red playhead needle tracks active playback position with `🎯 Center` auto-centering.
+    - Cyan hover needle and timestamp flag preview any point before clicking.
+    - **Live Orange Needle (`NOW`)**: Pinpoints the exact current wall-clock time and continuously moves forward as time progresses, marking the real-time boundary.
+  - **Recorded-Days-Only Selector**:
+    - The day selector displays and allows selecting **only** dates for which recordings actually exist on the NVR (even if present for just 1 second).
+    - Automatically scans up to 60 days of historical footage in the background without UI lag.
+    - Step buttons (`◀` / `▶`) navigate strictly between available recorded dates.
+    - If today has no recordings for a camera, it automatically selects the latest date with available footage.
   - **Mouse-Wheel Scrub-to-Seek**: Scroll the mouse wheel directly over the video player to scrub forward/backward (`±5s`, `±30s` with Shift, `±1m` with Ctrl) with an animated On-Screen Display (OSD) time badge.
-  - **Streamlined Playback Navigation**: Clean flickable top navigation with camera picker, date navigator, quick "Today" shortcut, NVR clips refresh, standalone MPV launcher, and 1-click recording saver.
+  - **Streamlined Playback Navigation**: Clean flickable top navigation with camera picker, available day dropdown, quick "Today" shortcut, NVR clips refresh, standalone MPV launcher, and 1-click recording saver.
   - **Lossless Clip Saving with Date & Time Range**: Save any playback interval or drawer clip directly to `~/cctv_recordings` with formatted filenames containing channel, camera name, date, and time range (e.g., `recording_ch01_Farm_Main_Gate_2026-11-17_14-00-00_to_15-00-00.mp4`).
   - **Scrollable Recordings Drawer**: Lists recorded clips with exact start/end times, durations, file sizes in MB, and one-click play, MPV playback, or disk save (`💾`).
   - **Fine-Grained Stream Progress Slider & Speed Controls**: Variable speed playback (`0.5×`, `1×`, `2×`, `4×`), snapshot, and audio toggle.

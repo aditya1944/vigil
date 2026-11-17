@@ -26,6 +26,8 @@ Backend::Backend(QObject *parent)
       m_isSavingRecording(false),
       m_saveProcess(nullptr) {
 
+    m_availableDates << m_playbackDate;
+
     m_groups << "All Cameras"
              << "Farm 1"
              << "Farm 2"
@@ -595,6 +597,7 @@ void Backend::setPlaybackChannel(int channel) {
     if (m_playbackChannel == channel && !m_playbackUrl.isEmpty()) return;
     m_playbackChannel = channel;
     emit playbackChannelChanged();
+    queryAvailableRecordingDates(m_playbackChannel);
     startPlayback(m_playbackChannel, m_playbackDate, m_playbackStartTime, m_playbackEndTime);
     queryRecordedClips(m_playbackChannel, m_playbackDate);
 }
@@ -646,6 +649,7 @@ void Backend::enterPlayback(int channel) {
     m_playbackStartTime = twoHoursAgo.toString("hh:mm:00");
     m_playbackEndTime = now.toString("hh:mm:00");
 
+    queryAvailableRecordingDates(m_playbackChannel);
     startPlayback(m_playbackChannel, m_playbackDate, m_playbackStartTime, m_playbackEndTime);
     queryRecordedClips(m_playbackChannel, m_playbackDate);
 }
@@ -1076,4 +1080,139 @@ void Backend::cancelSaveRecording() {
     }
     m_isSavingRecording = false;
     emit isSavingRecordingChanged();
+}
+
+QStringList Backend::parseDatesResponse(const QString &text) const {
+    QSet<QString> dateSet;
+    const QRegularExpression reTime("\\.(?:StartTime|EndTime)=(\\d{4}-\\d{2}-\\d{2})");
+    auto it = reTime.globalMatch(text);
+    while (it.hasNext()) {
+        dateSet.insert(it.next().captured(1));
+    }
+    QStringList list = dateSet.values();
+    std::sort(list.begin(), list.end(), std::greater<QString>());
+    return list;
+}
+
+void Backend::queryAvailableRecordingDates(int channel) {
+    if (channel < 1 || channel > 30) return;
+
+    if (m_cachedAvailableDates.contains(channel) && !m_cachedAvailableDates[channel].isEmpty()) {
+        m_availableDates = m_cachedAvailableDates[channel];
+        emit availableDatesChanged();
+    }
+
+    m_queryingDates = true;
+    emit queryingDatesChanged();
+
+    const QString host = m_nvrHost;
+    const int port = m_nvrPort == 554 ? 443 : m_nvrPort;
+    const QString user = m_username;
+    const QString pass = m_password;
+
+    // Scan backwards from today back 60 days
+    const QDate today = QDate::currentDate();
+    const QDate startDate = today.addDays(-60);
+    const QString startStr = startDate.toString("yyyy-MM-dd") + " 00:00:00";
+    const QString endStr = today.toString("yyyy-MM-dd") + " 23:59:59";
+
+    QPointer<Backend> self(this);
+
+    QThreadPool::globalInstance()->start([self, host, port, user, pass, channel, startStr, endStr]() {
+        // Step 1: create finder object
+        const QString createUrl = QString("https://%1:%2/cgi-bin/mediaFileFind.cgi?action=factory.create")
+                                      .arg(host).arg(port);
+        QProcess proc1;
+        proc1.start("curl", {"-k", "-s", "--digest", "-u", user + ":" + pass, createUrl});
+        if (!proc1.waitForFinished(10000)) {
+            if (self) {
+                QMetaObject::invokeMethod(self, [self]() {
+                    self->m_queryingDates = false;
+                    emit self->queryingDatesChanged();
+                });
+            }
+            return;
+        }
+
+        const QString res1 = QString::fromUtf8(proc1.readAllStandardOutput());
+        const QRegularExpression reObj("result=(\\d+)");
+        const auto matchObj = reObj.match(res1);
+        if (!matchObj.hasMatch()) {
+            if (self) {
+                QMetaObject::invokeMethod(self, [self]() {
+                    self->m_queryingDates = false;
+                    emit self->queryingDatesChanged();
+                });
+            }
+            return;
+        }
+        const QString obj = matchObj.captured(1);
+
+        // Step 2: findFile for the broad date range
+        const QString findUrl = QString("https://%1:%2/cgi-bin/mediaFileFind.cgi?action=findFile&object=%3&condition.Channel=%4&condition.StartTime=%5&condition.EndTime=%6&condition.VideoStream=Main")
+                                    .arg(host).arg(port).arg(obj).arg(channel)
+                                    .arg(QString(QUrl::toPercentEncoding(startStr)),
+                                         QString(QUrl::toPercentEncoding(endStr)));
+
+        QProcess proc2;
+        proc2.start("curl", {"-k", "-s", "--digest", "-u", user + ":" + pass, findUrl});
+        proc2.waitForFinished(10000);
+
+        // Step 3: findNextFile in batches to collect all dates
+        QSet<QString> dateSet;
+        const QRegularExpression reFound("found=(\\d+)");
+        const QRegularExpression reTime("\\.(?:StartTime|EndTime)=(\\d{4}-\\d{2}-\\d{2})");
+
+        int batch = 0;
+        while (batch < 10) {
+            batch++;
+            const QString nextUrl = QString("https://%1:%2/cgi-bin/mediaFileFind.cgi?action=findNextFile&object=%3&count=100")
+                                        .arg(host).arg(port).arg(obj);
+            QProcess proc3;
+            proc3.start("curl", {"-k", "-s", "--digest", "-u", user + ":" + pass, nextUrl});
+            if (!proc3.waitForFinished(10000)) break;
+
+            const QString res3 = QString::fromUtf8(proc3.readAllStandardOutput());
+            const auto mFound = reFound.match(res3);
+            const int count = mFound.hasMatch() ? mFound.captured(1).toInt() : 0;
+            if (count == 0) break;
+
+            auto it = reTime.globalMatch(res3);
+            while (it.hasNext()) {
+                dateSet.insert(it.next().captured(1));
+            }
+
+            if (count < 100) break;
+        }
+
+        // Step 4: destroy finder session
+        const QString destroyUrl = QString("https://%1:%2/cgi-bin/mediaFileFind.cgi?action=destroy&object=%3")
+                                       .arg(host).arg(port).arg(obj);
+        QProcess proc4;
+        proc4.start("curl", {"-k", "-s", "--digest", "-u", user + ":" + pass, destroyUrl});
+        proc4.waitForFinished(5000);
+
+        // Sort descending (newest dates first)
+        QStringList dateList = dateSet.values();
+        std::sort(dateList.begin(), dateList.end(), std::greater<QString>());
+
+        if (self) {
+            QMetaObject::invokeMethod(self, [self, channel, dateList]() {
+                self->m_queryingDates = false;
+                if (!dateList.isEmpty()) {
+                    self->m_cachedAvailableDates[channel] = dateList;
+                    self->m_availableDates = dateList;
+                }
+                emit self->availableDatesChanged();
+                emit self->queryingDatesChanged();
+
+                // If current playback date has no recordings, auto-select the latest date that does
+                if (!dateList.isEmpty() && !dateList.contains(self->m_playbackDate)) {
+                    self->setPlaybackDate(dateList.first());
+                    self->queryRecordedClips(channel, dateList.first());
+                    self->startPlayback(channel, dateList.first(), self->m_playbackStartTime, self->m_playbackEndTime);
+                }
+            });
+        }
+    });
 }
