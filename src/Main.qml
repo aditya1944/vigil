@@ -36,14 +36,65 @@ ApplicationWindow {
             }
         }
     }
-    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.primaryAction() }
+    Shortcut {
+        sequence: "Space"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (backend.activeMode === "playback") {
+                playbackView.togglePlayPause()
+            } else {
+                backend.primaryAction()
+            }
+        }
+    }
     Shortcut { sequence: "1"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(1, 1); } }
     Shortcut { sequence: "2"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(2, 2); } }
     Shortcut { sequence: "3"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(3, 3); } }
     Shortcut { sequence: "4"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(4, 4); } }
     Shortcut { sequence: "5"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(5, 6); } }
-    Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; onActivated: backend.prevPage() }
-    Shortcut { sequence: "Right"; context: Qt.ApplicationShortcut; onActivated: backend.nextPage() }
+    Shortcut {
+        sequence: "Left"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (backend.activeMode === "playback") {
+                playbackView.stepPlayback(-5000)
+            } else {
+                backend.prevPage()
+            }
+        }
+    }
+    Shortcut {
+        sequence: "Right"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (backend.activeMode === "playback") {
+                playbackView.stepPlayback(5000)
+            } else {
+                backend.nextPage()
+            }
+        }
+    }
+    Shortcut {
+        sequence: "+"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (backend.activeMode === "playback") playbackView.zoomIn()
+        }
+    }
+    Shortcut {
+        sequence: "="
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (backend.activeMode === "playback") playbackView.zoomIn()
+        }
+    }
+    Shortcut {
+        sequence: "-"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (backend.activeMode === "playback") playbackView.zoomOut()
+        }
+    }
     Shortcut { sequence: "P"; context: Qt.ApplicationShortcut; onActivated: backend.togglePatrol() }
     Shortcut { sequence: "B"; context: Qt.ApplicationShortcut; onActivated: win.sidebarVisible = !win.sidebarVisible }
     Shortcut {
@@ -241,6 +292,7 @@ ApplicationWindow {
 
                 // Historical Playback View
                 PlaybackView {
+                    id: playbackView
                     anchors.fill: parent
                     visible: backend.activeMode === "playback"
                 }

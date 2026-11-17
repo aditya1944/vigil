@@ -34,12 +34,13 @@ Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GN
 - **Intelligent Dual-Stream Architecture**:
   - **Substream (`subtype=1`, 720p/D1)**: Used automatically in multi-camera grid views to conserve network bandwidth and GPU decoding context limits.
   - **Mainstream (`subtype=0`, 1080p Full HD)**: Automatically engaged when focusing on any camera for crystal-clear detail.
-- **Historical Recording Playback**:
-  - Full NVR recording catalog queries via native HTTP Digest API (`mediaFileFind.cgi`).
-  - Interactive timeline scrubber with position tracking, seek slider, and jump controls (`±10s`, `±1m`).
-  - Variable speed playback (`0.5×`, `1×`, `2×`, `4×`).
-  - Visual clip drawer listing recorded segments with file sizes, timestamps, and one-click play.
-  - Seamless toggle between Live monitoring and Historical Playback from toolbar or any camera tile.
+- **Historical Recording Playback & Scrollable Timeline**:
+  - **Scrollable & Zoomable 24-Hour Timeline Ruler**: Visual hour grid markers with colored bands representing recorded NVR clips (`mediaFileFind.cgi`), real-time playhead needle, hover guide cursor with live timestamp preview, click/drag scrubbing, and variable zoom (`35px/hr` to `300px/hr`).
+  - **Mouse-Wheel Scrub-to-Seek**: Scroll the mouse wheel directly over the video player to scrub forward/backward (`±5s`, `±30s` with Shift, `±1m` with Ctrl) with an animated On-Screen Display (OSD) time badge.
+  - **Horizontally Scrollable Filter Bar**: Flickable top navigation ensuring all camera selection, date/time pickers, and search actions remain accessible on compact or tiled windows.
+  - **Scrollable Recordings Drawer**: Lists recorded clips with exact start/end times, durations, file sizes in MB, and one-click play or MPV playback.
+  - **Fine-Grained Stream Progress Slider & Speed Controls**: Variable speed playback (`0.5×`, `1×`, `2×`, `4×`), snapshot, and audio toggle.
+  - **Seamless Live / Playback Toggle**: Instant mode switching from the top toolbar or via the `⏪ Playback` button on any camera tile.
 - **Hardware-Accelerated Decoding**: Leverages Intel VAAPI, AMD VAAPI, or NVIDIA NVDEC through Qt 6's FFmpeg multimedia backend for minimal CPU overhead.
 - **Embedded Live Audio with Smart Muting**:
   - Direct PipeWire output for G.711 A-law (`pcm_alaw`) audio streams.
@@ -95,26 +96,29 @@ Modern integrated graphics (such as Intel UHD / Iris Xe) enforce hardware limits
 
 ---
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts & Navigation
 
-| Shortcut | Action |
-| :--- | :--- |
-| `1` | 1×1 Single Camera Layout |
-| `2` | 2×2 Grid Layout (4 cameras per page) |
-| `3` | 3×3 Grid Layout (9 cameras per page) |
-| `4` | 4×4 Grid Layout (16 cameras per page) |
-| `5` | 5×6 Full Grid Layout (All 30 cameras) |
-| `Left Arrow` / `◀` | Navigate to Previous Page |
-| `Right Arrow` / `▶` | Navigate to Next Page |
-| `Space` | Page forward / Exit Focus mode |
-| `Double Click` | Toggle 1080p HD Focus mode on tile |
-| `Right Click` | Open camera in external hardware-accelerated MPV window |
-| `P` | Toggle Patrol / Auto-cycle Tour mode |
-| `S` | Capture high-resolution snapshot to disk |
-| `B` | Toggle left camera inventory sidebar |
-| `F` / `F11` | Toggle Fullscreen mode |
-| `?` | Display Keyboard Shortcuts quick help overlay |
-| `Esc` / `Q` | Exit Focus mode / Quit application |
+| Shortcut | Context | Action |
+| :--- | :--- | :--- |
+| `1` | Live | 1×1 Single Camera Layout |
+| `2` | Live | 2×2 Grid Layout (4 cameras per page) |
+| `3` | Live | 3×3 Grid Layout (9 cameras per page) |
+| `4` | Live | 4×4 Grid Layout (16 cameras per page) |
+| `5` | Live | 5×6 Full Grid Layout (All 30 cameras) |
+| `Left Arrow` / `◀` | Live / Playback | Previous Page (Live) / Scrub `-5s` (Playback) |
+| `Right Arrow` / `▶` | Live / Playback | Next Page (Live) / Scrub `+5s` (Playback) |
+| `Space` | Live / Playback | Next Page or Exit Focus (Live) / Play-Pause Toggle (Playback) |
+| `Mouse Wheel` | Playback Video | Scrub footage (`±5s`; `Shift` for `±30s`, `Ctrl` for `±1m`) |
+| `Timeline Drag` | Playback Ruler | Click or drag to jump to any hour/minute of the day |
+| `Ctrl + Wheel` / `+ -` | Playback Ruler | Zoom 24-hour timeline ruler (`35px/hr` to `300px/hr`) |
+| `Double Click` | Live / Playback | Focus camera (Live) / Toggle Fullscreen (Playback) |
+| `Right Click` | Live / Playback | Open camera/clip in external hardware-accelerated MPV window |
+| `P` | Live | Toggle Patrol / Auto-cycle Tour mode |
+| `S` | Live / Playback | Capture high-resolution snapshot to disk |
+| `B` | Live | Toggle left camera inventory sidebar |
+| `F` / `F11` | Global | Toggle Fullscreen mode |
+| `?` | Global | Display Keyboard Shortcuts quick help overlay |
+| `Esc` / `Q` | Global | Return to Live / Exit Focus mode / Quit |
 
 ---
 

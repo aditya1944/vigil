@@ -68,20 +68,19 @@ Rectangle {
                 // Left: key, Right: description
                 Repeater {
                     model: [
-                        { key: "1", desc: qsTr("1×1 Focus View (HD)") },
-                        { key: "2", desc: qsTr("2×2 Grid (4 Cameras)") },
-                        { key: "3", desc: qsTr("3×3 Grid (9 Cameras)") },
-                        { key: "4", desc: qsTr("4×4 Grid (16 Cameras)") },
-                        { key: "5", desc: qsTr("5×6 Grid (All 30 Cameras)") },
-                        { key: "Space / ▶", desc: qsTr("Next Page / Exit Focus") },
-                        { key: "◀", desc: qsTr("Previous Page") },
-                        { key: "Double Click", desc: qsTr("Maximize / Minimize Camera") },
+                        { key: "1..5", desc: qsTr("1×1 up to 5×6 (All 30) Grid") },
+                        { key: "Space", desc: qsTr("Play/Pause or Next Page") },
+                        { key: "◀ / ▶", desc: qsTr("Prev/Next Page or Scrub ±5s") },
+                        { key: "Mouse Wheel", desc: qsTr("Scrub video (Shift: 30s, Ctrl: 1m)") },
+                        { key: "Timeline Drag", desc: qsTr("Click or drag to seek any time") },
+                        { key: "Ctrl + Wheel / + -", desc: qsTr("Zoom 24-hour timeline ruler") },
+                        { key: "Double Click", desc: qsTr("Maximize / Fullscreen camera") },
                         { key: "P", desc: qsTr("Toggle Patrol / Auto-Cycle") },
                         { key: "S", desc: qsTr("Snapshot active / focused camera") },
                         { key: "B", desc: qsTr("Toggle Camera List Sidebar") },
                         { key: "F / F11", desc: qsTr("Toggle Fullscreen") },
                         { key: "Right Click", desc: qsTr("Open in external MPV") },
-                        { key: "Esc / Q", desc: qsTr("Exit Focus / Quit") }
+                        { key: "Esc", desc: qsTr("Back to Live / Exit Focus") }
                     ]
 
                     delegate: RowLayout {
