@@ -18,6 +18,11 @@
 #include "translator.h"
 
 int main(int argc, char *argv[]) {
+    // Force Qt 6 FFmpeg Multimedia to use interleaved TCP for all RTSP streams.
+    // This eliminates UDP packet loss, HEVC slice corruption, missing POC reference
+    // frames, and hardware decoding crashes across live grids and playback.
+    qputenv("QT_FFMPEG_RTSP_TRANSPORT", "tcp");
+
     // Check for CLI subcommands before QGuiApplication initializes the display connection
     bool isCli = false;
     for (int i = 1; i < argc; ++i) {

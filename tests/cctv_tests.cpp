@@ -11,6 +11,11 @@ class CctvTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        qputenv("QT_FFMPEG_RTSP_TRANSPORT", "tcp");
+    }
+
     void backendInitializesWith30Cameras()
     {
         Backend backend;

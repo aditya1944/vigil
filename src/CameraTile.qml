@@ -49,8 +49,10 @@ Rectangle {
 
         onErrorOccurred: (error, errorString) => {
             if (root.active && root.targetUrl !== "") {
-                console.log("Stream error ch " + root.channel + ":", errorString)
-                reconnectTimer.restart()
+                if (!reconnectTimer.running) {
+                    console.log("Stream error ch " + root.channel + ":", errorString)
+                    reconnectTimer.start()
+                }
             }
         }
     }
