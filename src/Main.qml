@@ -150,7 +150,7 @@ ApplicationWindow {
                             CameraTile {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                modelData: backend.focusedCamera
+                                cameraData: backend.focusedCamera
                                 isFocused: true
                                 active: backend.focusedChannel > 0
                             }
@@ -181,7 +181,7 @@ ApplicationWindow {
                                 delegate: CameraTile {
                                     width: cameraGrid.cellWidth
                                     height: cameraGrid.cellHeight
-                                    modelData: modelData
+                                    cameraData: modelData
                                     isFocused: false
                                     staggerIndex: index
                                     active: backend.focusedChannel <= 0

@@ -13,12 +13,12 @@ Rectangle {
     radius: Math.min(6, theme.radius)
     clip: true
 
-    property var modelData: null
+    property var cameraData: null
     property bool isFocused: false
     property bool active: true
     property int staggerIndex: 0
 
-    readonly property var cam: modelData || ({})
+    readonly property var cam: cameraData || ({})
     readonly property string targetUrl: active ? (isFocused ? (cam.mainUrl || "") : (cam.streamUrl || "")) : ""
     readonly property int channel: cam.channel || 0
     readonly property string camName: cam.name || ""
