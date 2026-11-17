@@ -70,7 +70,7 @@ Rectangle {
     function stepPlayback(stepMs) {
         var newPos = playbackPlayer.position + stepMs
         newPos = Math.max(0, Math.min(playbackPlayer.duration, newPos))
-        playbackPlayer.seek(newPos)
+        playbackPlayer.position = newPos
         if (stepMs > 0) {
             root.osdText = "⏩ +" + (stepMs / 1000) + "s  (" + root.formatMs(newPos) + ")"
         } else {
@@ -149,7 +149,7 @@ Rectangle {
         var currentStart = root.timeToSecs(backend.playbackStartTime)
         var offsetMs = (targetSecs - currentStart) * 1000
         if (playbackPlayer.duration > 0 && targetSecs >= currentStart && offsetMs <= playbackPlayer.duration) {
-            playbackPlayer.seek(Math.max(0, offsetMs))
+            playbackPlayer.position = Math.max(0, offsetMs)
             root.osdText = "⏱ " + root.secsToTime(targetSecs)
             osdTimer.restart()
             return
@@ -236,19 +236,36 @@ Rectangle {
 
                     ComboBox {
                         id: cameraCombo
-                        Layout.preferredWidth: 220
+                        Layout.preferredWidth: 260
                         model: backend.cameras
-                        textRole: "name"
-                        currentIndex: {
-                            for (var i = 0; i < backend.cameras.length; ++i) {
-                                if (backend.cameras[i].channel === backend.playbackChannel) return i
+                        textRole: "displayName"
+
+                        function syncCurrentIndex() {
+                            if (!cameraCombo.model) return
+                            for (var i = 0; i < cameraCombo.model.length; ++i) {
+                                if (cameraCombo.model[i].channel === backend.playbackChannel) {
+                                    if (cameraCombo.currentIndex !== i) {
+                                        cameraCombo.currentIndex = i
+                                    }
+                                    return
+                                }
                             }
-                            return 0
                         }
+
+                        Component.onCompleted: syncCurrentIndex()
+
+                        Connections {
+                            target: backend
+                            function onPlaybackChannelChanged() {
+                                cameraCombo.syncCurrentIndex()
+                            }
+                        }
+
                         onActivated: (index) => {
-                            var ch = model[index].channel
-                            backend.setPlaybackChannel(ch)
-                            backend.queryRecordedClips(ch, backend.playbackDate)
+                            if (index >= 0 && cameraCombo.model && index < cameraCombo.model.length) {
+                                var selectedCam = cameraCombo.model[index]
+                                backend.enterPlayback(selectedCam.channel)
+                            }
                         }
                     }
 
@@ -446,7 +463,7 @@ Rectangle {
                             newPos = Math.max(0, newPos - stepMs)
                             root.osdText = "⏪ -" + (stepMs / 1000) + "s  (" + root.formatMs(newPos) + ")"
                         }
-                        playbackPlayer.seek(newPos)
+                        playbackPlayer.position = newPos
                         osdTimer.restart()
                     }
 
@@ -1097,7 +1114,7 @@ Rectangle {
                         flat: true
                         implicitHeight: 28
                         padding: 3
-                        onClicked: playbackPlayer.seek(Math.max(0, playbackPlayer.position - 60000))
+                        onClicked: playbackPlayer.position = Math.max(0, playbackPlayer.position - 60000)
                     }
 
                     Button {
@@ -1105,7 +1122,7 @@ Rectangle {
                         flat: true
                         implicitHeight: 28
                         padding: 3
-                        onClicked: playbackPlayer.seek(Math.max(0, playbackPlayer.position - 10000))
+                        onClicked: playbackPlayer.position = Math.max(0, playbackPlayer.position - 10000)
                     }
 
                     Button {
@@ -1113,7 +1130,7 @@ Rectangle {
                         flat: true
                         implicitHeight: 28
                         padding: 3
-                        onClicked: playbackPlayer.seek(Math.min(playbackPlayer.duration, playbackPlayer.position + 10000))
+                        onClicked: playbackPlayer.position = Math.min(playbackPlayer.duration, playbackPlayer.position + 10000)
                     }
 
                     Button {
@@ -1121,7 +1138,7 @@ Rectangle {
                         flat: true
                         implicitHeight: 28
                         padding: 3
-                        onClicked: playbackPlayer.seek(Math.min(playbackPlayer.duration, playbackPlayer.position + 60000))
+                        onClicked: playbackPlayer.position = Math.min(playbackPlayer.duration, playbackPlayer.position + 60000)
                     }
 
                     // Stream Progress Slider
@@ -1139,7 +1156,7 @@ Rectangle {
                         from: 0
                         to: Math.max(1, playbackPlayer.duration)
                         value: playbackPlayer.position
-                        onMoved: playbackPlayer.seek(value)
+                        onMoved: playbackPlayer.position = value
                     }
 
                     Text {

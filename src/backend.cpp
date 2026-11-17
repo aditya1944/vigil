@@ -13,6 +13,9 @@
 #include <QNetworkReply>
 #include <QAuthenticator>
 #include <QSslError>
+#include <QProcess>
+#include <QThreadPool>
+#include <QPointer>
 #include <algorithm>
 
 Backend::Backend(QObject *parent)
@@ -206,6 +209,7 @@ QVariantList Backend::cameras() const {
         QVariantMap m;
         m["channel"] = c.channel;
         m["name"] = c.name;
+        m["displayName"] = QString("Ch %1 — %2").arg(c.channel < 10 ? "0" + QString::number(c.channel) : QString::number(c.channel), c.name);
         m["ip"] = c.ip;
         m["group"] = c.group;
         m["mainUrl"] = c.mainUrl;
@@ -576,9 +580,12 @@ void Backend::setActiveMode(const QString &mode) {
 }
 
 void Backend::setPlaybackChannel(int channel) {
-    if (channel < 1 || channel > 30 || m_playbackChannel == channel) return;
+    if (channel < 1 || channel > 30) return;
+    if (m_playbackChannel == channel && !m_playbackUrl.isEmpty()) return;
     m_playbackChannel = channel;
     emit playbackChannelChanged();
+    startPlayback(m_playbackChannel, m_playbackDate, m_playbackStartTime, m_playbackEndTime);
+    queryRecordedClips(m_playbackChannel, m_playbackDate);
 }
 
 void Backend::setPlaybackDate(const QString &date) {
@@ -669,26 +676,23 @@ void Backend::queryRecordedClips(int channel, const QString &date) {
     m_playbackClips.clear();
     emit playbackClipsChanged();
 
-    doFindFactoryCreate(channel, date);
-}
+    // Query Dahua NVR mediaFileFind CGI via curl in a background thread to prevent UI lockup
+    // and reliably handle Dahua Digest authentication nonces and self-signed SSL certs.
+    QThreadPool::globalInstance()->start([host = m_nvrHost, user = m_username, pass = m_password, channel, date, self = QPointer<Backend>(this)]() {
+        const QString auth = QString("%1:%2").arg(user, pass);
 
-void Backend::doFindFactoryCreate(int channel, const QString &date) {
-    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=factory.create").arg(m_nvrHost);
-    QNetworkRequest req{QUrl(urlStr)};
-    QNetworkReply *reply = m_netManager->get(req);
+        // 1. factory.create session
+        QProcess procCreate;
+        QStringList argsCreate = {
+            "-k", "-s", "--digest", "-u", auth,
+            QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=factory.create").arg(host)
+        };
+        procCreate.start("curl", argsCreate);
+        if (!procCreate.waitForFinished(6000)) return;
+        const QString createOut = QString::fromUtf8(procCreate.readAllStandardOutput());
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, channel, date]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            m_queryingClips = false;
-            emit queryingClipsChanged();
-            showMessage(tr("Failed to connect to NVR for recordings query"));
-            return;
-        }
-
-        const QString text = QString::fromUtf8(reply->readAll());
         QString objectId;
-        for (const QString &line : text.split('\n')) {
+        for (const QString &line : createOut.split('\n')) {
             if (line.trimmed().startsWith("result=")) {
                 objectId = line.trimmed().mid(7);
                 break;
@@ -696,63 +700,77 @@ void Backend::doFindFactoryCreate(int channel, const QString &date) {
         }
 
         if (objectId.isEmpty()) {
-            m_queryingClips = false;
-            emit queryingClipsChanged();
-            showMessage(tr("NVR returned invalid finder ID"));
+            if (self) {
+                QMetaObject::invokeMethod(self.data(), [self]() {
+                    if (!self) return;
+                    self->m_queryingClips = false;
+                    emit self->queryingClipsChanged();
+                    self->showMessage(tr("NVR session error: could not create finder session"));
+                });
+            }
             return;
         }
 
-        doFindFile(objectId, channel, date);
+        // 2. findFile condition for requested date and channel
+        QProcess procFind;
+        const QString findUrl = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=findFile&object=%2&condition.Channel=%3&condition.StartTime=%4%2000:00:00&condition.EndTime=%4%2023:59:59&condition.Types%5B0%5D=dav")
+            .arg(host, objectId, QString::number(channel), date);
+        QStringList argsFind = {"-k", "-s", "--digest", "-u", auth, findUrl};
+        procFind.start("curl", argsFind);
+        if (!procFind.waitForFinished(6000)) {
+            QProcess::execute("curl", {"-k", "-s", "--digest", "-u", auth, QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=destroy&object=%2").arg(host, objectId)});
+            return;
+        }
+
+        // 3. findNextFile (retrieve up to 500 clips for the day)
+        QProcess procNext;
+        const QString nextUrl = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=findNextFile&object=%2&count=500")
+            .arg(host, objectId);
+        QStringList argsNext = {"-k", "-s", "--digest", "-u", auth, nextUrl};
+        procNext.start("curl", argsNext);
+        procNext.waitForFinished(10000);
+        const QString nextOut = QString::fromUtf8(procNext.readAllStandardOutput());
+
+        // 4. destroy session
+        QProcess procDestroy;
+        const QString destroyUrl = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=destroy&object=%2")
+            .arg(host, objectId);
+        procDestroy.start("curl", {"-k", "-s", "--digest", "-u", auth, destroyUrl});
+        procDestroy.waitForFinished(3000);
+
+        if (!self) return;
+
+        // Parse and notify on main thread
+        QMetaObject::invokeMethod(self.data(), [self, nextOut, channel, date]() {
+            if (!self) return;
+            self->parseClipsResponse(nextOut, channel);
+            self->m_queryingClips = false;
+            emit self->queryingClipsChanged();
+            emit self->playbackClipsChanged();
+            self->showMessage(tr("Found %1 recorded segments on %2").arg(self->m_playbackClips.size()).arg(date));
+        });
     });
+}
+
+void Backend::doFindFactoryCreate(int channel, const QString &date) {
+    Q_UNUSED(channel);
+    Q_UNUSED(date);
 }
 
 void Backend::doFindFile(const QString &objectId, int channel, const QString &date) {
-    const QString startStr = QUrl::toPercentEncoding(date + " 00:00:00");
-    const QString endStr = QUrl::toPercentEncoding(date + " 23:59:59");
-    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=findFile&object=%2&condition.Channel=%3&condition.StartTime=%4&condition.EndTime=%5&condition.Types[0]=dav")
-        .arg(m_nvrHost, objectId, QString::number(channel), startStr, endStr);
-
-    QNetworkRequest req{QUrl(urlStr)};
-    QNetworkReply *reply = m_netManager->get(req);
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, objectId, channel, date]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            doFindDestroy(objectId);
-            m_queryingClips = false;
-            emit queryingClipsChanged();
-            showMessage(tr("Search condition error on NVR"));
-            return;
-        }
-        doFindNextFile(objectId, channel, date);
-    });
+    Q_UNUSED(objectId);
+    Q_UNUSED(channel);
+    Q_UNUSED(date);
 }
 
 void Backend::doFindNextFile(const QString &objectId, int channel, const QString &date) {
-    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=findNextFile&object=%2&count=100")
-        .arg(m_nvrHost, objectId);
-
-    QNetworkRequest req{QUrl(urlStr)};
-    QNetworkReply *reply = m_netManager->get(req);
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, objectId, channel, date]() {
-        reply->deleteLater();
-        const QString text = QString::fromUtf8(reply->readAll());
-        parseClipsResponse(text, channel);
-        doFindDestroy(objectId);
-        m_queryingClips = false;
-        emit queryingClipsChanged();
-        emit playbackClipsChanged();
-        showMessage(tr("Found %1 recorded segments on %2").arg(m_playbackClips.size()).arg(date));
-    });
+    Q_UNUSED(objectId);
+    Q_UNUSED(channel);
+    Q_UNUSED(date);
 }
 
 void Backend::doFindDestroy(const QString &objectId) {
-    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=destroy&object=%2")
-        .arg(m_nvrHost, objectId);
-    QNetworkRequest req{QUrl(urlStr)};
-    QNetworkReply *reply = m_netManager->get(req);
-    connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+    Q_UNUSED(objectId);
 }
 
 void Backend::parseClipsResponse(const QString &text, int channel) {

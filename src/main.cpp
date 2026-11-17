@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h" || arg == "help" ||
-            arg == "list" || arg == "snapshot" || arg == "mpv" || arg == "playback-mpv") {
+            arg == "list" || arg == "snapshot" || arg == "mpv" || arg == "playback-mpv" || arg == "query-clips") {
             isCli = true;
             break;
         }
@@ -98,6 +98,26 @@ int main(int argc, char *argv[]) {
             const QString end = (args.size() > 5) ? args.at(5) : "23:59:59";
             Backend b;
             b.openExternalPlaybackMpv(ch, date, start, end);
+            return 0;
+        } else if (cmd == "query-clips") {
+            const int ch = (args.size() > 2) ? args.at(2).toInt() : 1;
+            const QString date = (args.size() > 3) ? args.at(3) : QDate::currentDate().toString("yyyy-MM-dd");
+            Backend b;
+            QEventLoop loop;
+            QObject::connect(&b, &Backend::queryingClipsChanged, [&b, &loop]() {
+                if (!b.queryingClips()) loop.quit();
+            });
+            QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+            b.queryRecordedClips(ch, date);
+            loop.exec();
+            std::cout << "Clips found: " << b.playbackClips().size() << "\n";
+            for (const auto &v : b.playbackClips()) {
+                const auto m = v.toMap();
+                std::cout << "  " << m.value("startTimeDisplay").toString().toStdString()
+                          << " -> " << m.value("endTimeDisplay").toString().toStdString()
+                          << " (" << m.value("durationStr").toString().toStdString()
+                          << ", " << m.value("sizeMb").toString().toStdString() << " MB)\n";
+            }
             return 0;
         } else if (cmd == "playback") {
             initialPlaybackChannel = (args.size() > 2) ? args.at(2).toInt() : 1;
