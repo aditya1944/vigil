@@ -48,6 +48,17 @@ Rectangle {
                     font.pixelSize: 11
                 }
             }
+
+            Button {
+                implicitWidth: 26
+                implicitHeight: 22
+                flat: true
+                text: backend.fetchingCameraNames ? "⏳" : "🔄"
+                enabled: !backend.fetchingCameraNames
+                onClicked: backend.fetchCameraNamesFromNvr()
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Sync camera names from NVR")
+            }
         }
 
         // Search Input

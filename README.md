@@ -198,6 +198,9 @@ Vigil includes built-in command-line utilities for shell integration, automated 
 # Print full inventory of configured cameras, channel numbers, IPs, and zones:
 cctv list
 
+# Query NVR and synchronize camera names and zones into local cache:
+cctv sync-names
+
 # Launch GUI directly in playback mode for Channel 5:
 cctv playback 5
 

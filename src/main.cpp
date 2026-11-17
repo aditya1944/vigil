@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h" || arg == "help" ||
-            arg == "list" || arg == "snapshot" || arg == "mpv" || arg == "playback-mpv" || arg == "query-clips") {
+            arg == "list" || arg == "sync-names" || arg == "snapshot" || arg == "mpv" || arg == "playback-mpv" || arg == "query-clips") {
             isCli = true;
             break;
         }
@@ -60,10 +60,31 @@ int main(int argc, char *argv[]) {
                       << "  cctv                               Launch live viewer GUI\n"
                       << "  cctv playback <ch>                 Launch GUI directly in playback mode for <ch>\n"
                       << "  cctv list                          List all configured cameras\n"
+                      << "  cctv sync-names                    Query NVR and update local camera cache\n"
                       << "  cctv snapshot <ch>                 Capture snapshot from channel <ch>\n"
                       << "  cctv mpv <ch>                      Open live channel in standalone MPV\n"
                       << "  cctv playback-mpv <ch> [date] [s] [e] Open recorded footage in standalone MPV\n"
                       << "  cctv --help                        Show this help message\n";
+            return 0;
+        } else if (cmd == "sync-names") {
+            Backend b;
+            std::cout << "Synchronizing camera names from NVR (" << b.nvrHost().toStdString() << ")...\n";
+            QEventLoop loop;
+            QObject::connect(&b, &Backend::fetchingCameraNamesChanged, [&b, &loop]() {
+                if (!b.fetchingCameraNames()) loop.quit();
+            });
+            QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+            b.fetchCameraNamesFromNvr();
+            loop.exec();
+            const auto cams = b.cameras();
+            std::cout << "Successfully synchronized " << cams.size() << " cameras:\n";
+            for (const auto &v : cams) {
+                const auto m = v.toMap();
+                std::cout << "  Ch " << m.value("channel").toInt()
+                          << "\t[" << m.value("group").toString().toStdString() << "]\t"
+                          << m.value("name").toString().toStdString()
+                          << " (" << m.value("ip").toString().toStdString() << ")\n";
+            }
             return 0;
         } else if (cmd == "list") {
             Backend b;

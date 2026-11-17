@@ -220,6 +220,53 @@ private slots:
         QVERIFY(!b.availableDates().isEmpty());
         QCOMPARE(b.availableDates().first(), QDate::currentDate().toString("yyyy-MM-dd"));
     }
+
+    void backendParseChannelTitlesResponse()
+    {
+        Backend b;
+        const QString sampleNvrResponse =
+            "table.ChannelTitle[0].Name=Gate Main Entrance\n"
+            "table.ChannelTitle[1].Name=Office Front Desk\n"
+            "table.ChannelTitle[2].Name=Farm-1 platform left\n"
+            "ChannelTitle[3].Name=House-West\n"
+            "ChannelTitle[4].Name=Feed Mill inside\n";
+
+        const auto titles = b.parseChannelTitlesResponse(sampleNvrResponse);
+        QCOMPARE(titles.size(), 5);
+        QCOMPARE(titles.value(1), QString("Gate Main Entrance"));
+        QCOMPARE(titles.value(2), QString("Office Front Desk"));
+        QCOMPARE(titles.value(3), QString("Farm-1 platform left"));
+        QCOMPARE(titles.value(4), QString("House-West"));
+        QCOMPARE(titles.value(5), QString("Feed Mill inside"));
+    }
+
+    void backendInferGroupFromName()
+    {
+        Backend b;
+        QCOMPARE(b.inferGroupFromName("Farm-1 Entrance West Outside"), QString("Farm 1"));
+        QCOMPARE(b.inferGroupFromName("Farm-2 platform left"), QString("Farm 2"));
+        QCOMPARE(b.inferGroupFromName("Farm-3 North West Outside"), QString("Farm 3"));
+        QCOMPARE(b.inferGroupFromName("Farm Main Gate"), QString("Main Gate & Office"));
+        QCOMPARE(b.inferGroupFromName("Farm office room"), QString("Main Gate & Office"));
+        QCOMPARE(b.inferGroupFromName("Feed Mill outside south"), QString("Feed Mill"));
+        QCOMPARE(b.inferGroupFromName("Brooder Inside front"), QString("Livestock & Brooder"));
+        QCOMPARE(b.inferGroupFromName("Cows Resting Place"), QString("Livestock & Brooder"));
+        QCOMPARE(b.inferGroupFromName("House-Garage"), QString("House & Garage"));
+    }
+
+    void backendApplyCameraNames()
+    {
+        Backend b;
+        QMap<int, QString> names;
+        names.insert(1, "Main Gate HD");
+        names.insert(25, "Residential Villa");
+
+        b.applyCameraNames(names);
+        const auto cams = b.cameras();
+        QCOMPARE(cams.at(0).toMap().value("name").toString(), QString("Main Gate HD"));
+        QCOMPARE(cams.at(0).toMap().value("group").toString(), QString("Main Gate & Office"));
+        QCOMPARE(cams.at(24).toMap().value("name").toString(), QString("Residential Villa"));
+    }
 };
 
 QTEST_MAIN(CctvTests)

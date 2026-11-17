@@ -56,6 +56,7 @@ class Backend : public QObject {
     Q_PROPERTY(QString recordingsDir READ recordingsDir CONSTANT)
     Q_PROPERTY(QStringList availableDates READ availableDates NOTIFY availableDatesChanged)
     Q_PROPERTY(bool queryingDates READ queryingDates NOTIFY queryingDatesChanged)
+    Q_PROPERTY(bool fetchingCameraNames READ fetchingCameraNames NOTIFY fetchingCameraNamesChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -77,6 +78,8 @@ public:
     QString searchQuery() const { return m_searchQuery; }
     bool substreamEnabled() const { return m_substreamEnabled; }
     int totalCameraCount() const { return m_cameras.size(); }
+    QString nvrHost() const { return m_nvrHost; }
+    bool fetchingCameraNames() const { return m_fetchingCameraNames; }
 
     // Playback Getters
     QString activeMode() const { return m_activeMode; }
@@ -133,9 +136,13 @@ public:
     Q_INVOKABLE QString buildPlaybackRtspUrl(int channel, const QDateTime &start, const QDateTime &end) const;
     Q_INVOKABLE void parseClipsResponse(const QString &text, int channel);
 
-    // Configuration
+    // Configuration & NVR Sync
     Q_INVOKABLE void loadConfig();
     Q_INVOKABLE void saveConfig();
+    Q_INVOKABLE void fetchCameraNamesFromNvr();
+    Q_INVOKABLE QMap<int, QString> parseChannelTitlesResponse(const QString &text) const;
+    Q_INVOKABLE QString inferGroupFromName(const QString &name) const;
+    Q_INVOKABLE void applyCameraNames(const QMap<int, QString> &names);
 
 signals:
     void camerasChanged();
@@ -151,6 +158,7 @@ signals:
     void statusMessageChanged();
     void searchQueryChanged();
     void substreamEnabledChanged();
+    void fetchingCameraNamesChanged();
 
     // Playback Signals
     void activeModeChanged();
@@ -217,4 +225,5 @@ private:
     QStringList m_availableDates;
     bool m_queryingDates = false;
     QMap<int, QStringList> m_cachedAvailableDates;
+    bool m_fetchingCameraNames = false;
 };

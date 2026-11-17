@@ -58,6 +58,9 @@ Backend::Backend(QObject *parent)
         m_statusMessage.clear();
         emit statusMessageChanged();
     });
+
+    // Asynchronously synchronize live camera names from NVR
+    QTimer::singleShot(250, this, &Backend::fetchCameraNamesFromNvr);
 }
 
 Backend::~Backend() {
@@ -155,6 +158,26 @@ void Backend::loadConfig() {
     m_gridCols = root.value("gridCols").toInt(m_gridCols);
     m_gridRows = root.value("gridRows").toInt(m_gridRows);
     m_patrolInterval = root.value("patrolInterval").toInt(m_patrolInterval);
+
+    // Load cached camera names and groups if present
+    if (root.contains("cameras") && root["cameras"].isArray()) {
+        const QJsonArray camArray = root["cameras"].toArray();
+        for (const auto &v : camArray) {
+            const QJsonObject o = v.toObject();
+            const int ch = o.value("channel").toInt();
+            const QString name = o.value("name").toString();
+            const QString group = o.value("group").toString();
+            const QString ip = o.value("ip").toString();
+            for (auto &cam : m_cameras) {
+                if (cam.channel == ch) {
+                    if (!name.isEmpty()) cam.name = name;
+                    if (!group.isEmpty()) cam.group = group;
+                    if (!ip.isEmpty()) cam.ip = ip;
+                    break;
+                }
+            }
+        }
+    }
 
     // Refresh URLs for all cameras
     for (auto &cam : m_cameras) {
@@ -1212,6 +1235,126 @@ void Backend::queryAvailableRecordingDates(int channel) {
                     self->setPlaybackDate(dateList.first());
                     self->queryRecordedClips(channel, dateList.first());
                     self->startPlayback(channel, dateList.first(), self->m_playbackStartTime, self->m_playbackEndTime);
+                }
+            });
+        }
+    });
+}
+
+QMap<int, QString> Backend::parseChannelTitlesResponse(const QString &text) const {
+    QMap<int, QString> names;
+    const QRegularExpression re("(?:table\\.)?ChannelTitle\\[(\\d+)\\]\\.Name=(.*)");
+    auto it = re.globalMatch(text);
+    while (it.hasNext()) {
+        const auto match = it.next();
+        const int ch = match.captured(1).toInt() + 1;
+        const QString name = match.captured(2).trimmed();
+        if (!name.isEmpty()) {
+            names.insert(ch, name);
+        }
+    }
+    return names;
+}
+
+QString Backend::inferGroupFromName(const QString &name) const {
+    const QString lower = name.toLower();
+    if (lower.contains("farm-1") || lower.contains("farm 1") || lower.contains("farm1")) return "Farm 1";
+    if (lower.contains("farm-2") || lower.contains("farm 2") || lower.contains("farm2")) return "Farm 2";
+    if (lower.contains("farm-3") || lower.contains("farm 3") || lower.contains("farm3")) return "Farm 3";
+    if (lower.contains("gate") || lower.contains("office")) return "Main Gate & Office";
+    if (lower.contains("feed mill") || lower.contains("feedmill")) return "Feed Mill";
+    if (lower.contains("brooder") || lower.contains("cow") || lower.contains("livestock")) return "Livestock & Brooder";
+    if (lower.contains("house") || lower.contains("garage")) return "House & Garage";
+    return "All Cameras";
+}
+
+void Backend::applyCameraNames(const QMap<int, QString> &names) {
+    if (names.isEmpty()) return;
+
+    bool changed = false;
+    for (auto it = names.constBegin(); it != names.constEnd(); ++it) {
+        const int ch = it.key();
+        const QString newName = it.value();
+
+        bool found = false;
+        for (auto &cam : m_cameras) {
+            if (cam.channel == ch) {
+                found = true;
+                if (cam.name != newName) {
+                    cam.name = newName;
+                    const QString inferred = inferGroupFromName(newName);
+                    if (inferred != "All Cameras") {
+                        cam.group = inferred;
+                    }
+                    changed = true;
+                }
+                break;
+            }
+        }
+
+        // If NVR returns an active channel not yet in m_cameras
+        if (!found && !newName.startsWith("Channel", Qt::CaseInsensitive)) {
+            CameraInfo newCam;
+            newCam.channel = ch;
+            newCam.name = newName;
+            newCam.ip = QString("192.168.1.%1").arg(100 + ch);
+            newCam.group = inferGroupFromName(newName);
+            newCam.mainUrl = buildRtspUrl(ch, 0);
+            newCam.subUrl = buildRtspUrl(ch, 1);
+            m_cameras.append(newCam);
+            changed = true;
+        }
+    }
+
+    const QString configPath = QDir::homePath() + "/.config/cctv/config.json";
+    if (changed || !QFile::exists(configPath)) {
+        std::sort(m_cameras.begin(), m_cameras.end(), [](const CameraInfo &a, const CameraInfo &b) {
+            return a.channel < b.channel;
+        });
+        saveConfig();
+        emit camerasChanged();
+        emit visibleCamerasChanged();
+        emit playbackChannelChanged();
+    }
+}
+
+void Backend::fetchCameraNamesFromNvr() {
+    if (m_fetchingCameraNames) return;
+
+    m_fetchingCameraNames = true;
+    emit fetchingCameraNamesChanged();
+
+    const QString host = m_nvrHost;
+    const int port = m_nvrPort == 554 ? 443 : m_nvrPort;
+    const QString user = m_username;
+    const QString pass = m_password;
+
+    QPointer<Backend> self(this);
+
+    QThreadPool::globalInstance()->start([self, host, port, user, pass]() {
+        const QString url = QString("https://%1:%2/cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle")
+                                .arg(host).arg(port);
+        QProcess proc;
+        proc.start("curl", {"-k", "-s", "--digest", "-u", user + ":" + pass, url});
+        if (!proc.waitForFinished(10000)) {
+            if (self) {
+                QMetaObject::invokeMethod(self, [self]() {
+                    self->m_fetchingCameraNames = false;
+                    emit self->fetchingCameraNamesChanged();
+                });
+            }
+            return;
+        }
+
+        const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+        if (self) {
+            QMetaObject::invokeMethod(self, [self, output]() {
+                self->m_fetchingCameraNames = false;
+                emit self->fetchingCameraNamesChanged();
+                const auto names = self->parseChannelTitlesResponse(output);
+                if (!names.isEmpty()) {
+                    self->applyCameraNames(names);
+                    self->showMessage(tr("Synchronized %1 camera names from NVR").arg(names.size()));
                 }
             });
         }
