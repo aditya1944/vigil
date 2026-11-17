@@ -68,8 +68,19 @@ int main(int argc, char *argv[]) {
         } else if (cmd == "snapshot" && args.size() > 2) {
             const int ch = args.at(2).toInt();
             Backend b;
-            b.takeSnapshot(ch);
-            std::cout << "Initiated snapshot capture for Channel " << ch << "\n";
+            const QString url = QString("rtsp://admin:Admin%40123@192.168.1.245:554/cam/realmonitor?channel=%1&subtype=0").arg(ch);
+            const QString outDir = QDir::homePath() + "/cctv_snapshots";
+            QDir().mkpath(outDir);
+            const QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
+            const QString outFile = QString("%1/snapshot_ch%2_%3.jpg").arg(outDir).arg(ch, 2, 10, QChar('0')).arg(timestamp);
+            std::cout << "Capturing snapshot from Channel " << ch << "...\n";
+            QProcess p;
+            p.start("ffmpeg", {"-y", "-rtsp_transport", "tcp", "-i", url, "-vframes", "1", "-q:v", "2", outFile});
+            if (p.waitForFinished(10000) && p.exitCode() == 0 && QFile::exists(outFile)) {
+                std::cout << "Snapshot saved: " << outFile.toStdString() << "\n";
+            } else {
+                std::cerr << "Snapshot capture failed for Channel " << ch << "\n";
+            }
             return 0;
         } else if (cmd == "mpv" && args.size() > 2) {
             const int ch = args.at(2).toInt();
