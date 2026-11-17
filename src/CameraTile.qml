@@ -17,6 +17,15 @@ Rectangle {
     property bool isFocused: false
     property bool active: true
     property int staggerIndex: 0
+    property bool manualMuteSet: false
+    property bool userMuted: false
+
+    readonly property bool effectiveMuted: manualMuteSet ? userMuted : !(isFocused || (backend.gridCols === 1 && backend.gridRows === 1))
+
+    function toggleAudio() {
+        manualMuteSet = true
+        userMuted = !effectiveMuted
+    }
 
     readonly property var cam: cameraData || ({})
     readonly property string targetUrl: active ? (isFocused ? (cam.mainUrl || "") : (cam.streamUrl || "")) : ""
@@ -26,10 +35,16 @@ Rectangle {
 
     readonly property bool isConnecting: active && (player.playbackState !== MediaPlayer.PlayingState)
 
+    AudioOutput {
+        id: audioOutput
+        muted: root.effectiveMuted
+        volume: 1.0
+    }
+
     MediaPlayer {
         id: player
         videoOutput: videoOutput
-        audioOutput: null
+        audioOutput: audioOutput
         loops: MediaPlayer.Infinite
 
         onErrorOccurred: (error, errorString) => {
@@ -188,12 +203,39 @@ Rectangle {
             }
         }
 
-        // Live status dot
+        // Right controls: Audio toggle & Live status dot
         Row {
             anchors.right: parent.right
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 6
+            spacing: 8
+
+            // Audio Mute/Unmute icon button
+            Rectangle {
+                width: 22
+                height: 20
+                radius: 3
+                color: root.effectiveMuted ? "transparent" : Qt.rgba(16, 185, 129, 0.25)
+                anchors.verticalCenter: parent.verticalCenter
+
+                Text {
+                    anchors.centerIn: parent
+                    text: root.effectiveMuted ? "🔇" : "🔊"
+                    font.pixelSize: 11
+                    opacity: root.effectiveMuted ? 0.6 : 1.0
+                }
+
+                MouseArea {
+                    id: headerAudioMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleAudio()
+                }
+
+                ToolTip.visible: headerAudioMouse.containsMouse
+                ToolTip.text: root.effectiveMuted ? qsTr("Unmute Audio") : qsTr("Mute Audio")
+            }
 
             Rectangle {
                 width: 8
@@ -242,6 +284,18 @@ Rectangle {
                 onClicked: backend.takeSnapshot(root.channel)
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Capture high-resolution still image")
+            }
+
+            // Audio Toggle button
+            Button {
+                height: 28
+                padding: 4
+                text: root.effectiveMuted ? qsTr("🔇 Unmute") : qsTr("🔊 Mute")
+                flat: true
+                highlighted: !root.effectiveMuted
+                onClicked: root.toggleAudio()
+                ToolTip.visible: hovered
+                ToolTip.text: root.effectiveMuted ? qsTr("Enable live audio stream") : qsTr("Mute audio stream")
             }
 
             // Focus / Grid toggle
