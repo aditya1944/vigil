@@ -503,7 +503,6 @@ Rectangle {
                     videoOutput: playbackVideoOutput
                     audioOutput: playbackAudioOutput
                     source: backend.playbackUrl
-                    loops: MediaPlayer.Once
 
                     onErrorOccurred: (error, errorString) => {
                         if (backend.playbackUrl !== "") {

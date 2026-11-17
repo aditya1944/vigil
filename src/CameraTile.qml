@@ -45,7 +45,6 @@ Rectangle {
         id: player
         videoOutput: videoOutput
         audioOutput: audioOutput
-        loops: MediaPlayer.Infinite
 
         onErrorOccurred: (error, errorString) => {
             if (root.active && root.targetUrl !== "") {

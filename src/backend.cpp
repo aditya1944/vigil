@@ -523,8 +523,8 @@ void Backend::openExternalMpv(int channel) {
 
     const QStringList args = {
         "--rtsp-transport=tcp",
+        "--hwdec=vaapi",
         "--profile=low-latency",
-        "--untimed",
         "--title=" + camName,
         streamUrl
     };
@@ -883,6 +883,7 @@ void Backend::openExternalPlaybackMpv(int channel, const QString &date, const QS
 
     const QStringList args = {
         "--rtsp-transport=tcp",
+        "--hwdec=vaapi",
         "--profile=low-latency",
         "--title=" + camName,
         url

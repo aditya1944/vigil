@@ -23,6 +23,9 @@ int main(int argc, char *argv[]) {
     // frames, and hardware decoding crashes across live grids and playback.
     qputenv("QT_FFMPEG_RTSP_TRANSPORT", "tcp");
 
+    // Prefer Intel VA-API driver directly for hardware video acceleration
+    qputenv("LIBVA_DRIVER_NAME", "iHD");
+
     // Check for CLI subcommands before QGuiApplication initializes the display connection
     bool isCli = false;
     for (int i = 1; i < argc; ++i) {
