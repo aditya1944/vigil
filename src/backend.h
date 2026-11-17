@@ -119,6 +119,7 @@ private:
     int m_gridRows = 2;
     int m_pageIndex = 0;
     int m_focusedChannel = -1;
+    int m_lastFocusedChannel = -1;
     bool m_substreamEnabled = true;
 
     QTimer m_patrolTimer;

@@ -284,9 +284,34 @@ void Backend::setGridRows(int rows) {
 void Backend::setGridDimensions(int cols, int rows) {
     if (cols < 1 || cols > 6 || rows < 1 || rows > 6)
         return;
+
+    int targetCamIndex = 0;
+    const auto filtered = filteredCameras();
+    const int oldPageSize = m_gridCols * m_gridRows;
+
+    const int refChannel = (m_focusedChannel > 0) ? m_focusedChannel : m_lastFocusedChannel;
+    if (refChannel > 0) {
+        for (int i = 0; i < filtered.size(); ++i) {
+            if (filtered[i].channel == refChannel) {
+                targetCamIndex = i;
+                break;
+            }
+        }
+    } else if (oldPageSize > 0) {
+        targetCamIndex = m_pageIndex * oldPageSize;
+    }
+
+    if (m_focusedChannel > 0) {
+        m_focusedChannel = -1;
+        emit focusedChannelChanged();
+    }
+
     m_gridCols = cols;
     m_gridRows = rows;
-    m_pageIndex = 0;
+
+    const int newPageSize = m_gridCols * m_gridRows;
+    m_pageIndex = (newPageSize > 0) ? (targetCamIndex / newPageSize) : 0;
+
     emit gridDimensionsChanged();
     emit pageIndexChanged();
     emit totalPagesChanged();
@@ -319,12 +344,15 @@ void Backend::focusCamera(int channel) {
     if (m_focusedChannel == channel)
         return;
     m_focusedChannel = channel;
+    if (channel > 0)
+        m_lastFocusedChannel = channel;
     emit focusedChannelChanged();
 }
 
 void Backend::exitFocus() {
     if (m_focusedChannel == -1)
         return;
+    m_lastFocusedChannel = m_focusedChannel;
     m_focusedChannel = -1;
     emit focusedChannelChanged();
 }
