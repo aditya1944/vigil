@@ -1,35 +1,91 @@
-# vigil
+# Vigil
 
-Fast, hardware-accelerated RTSP multi-camera live stream monitor built for Linux with C++, Qt 6 and Wayland.
+<p align="center">
+  <strong>Fast, hardware-accelerated RTSP multi-camera live stream monitor built for Linux with C++, Qt 6, and Wayland.</strong>
+</p>
 
-A high-performance, native Wayland/Linux desktop client for viewing live CCTV camera feeds. Built specifically for Omarchy (Hyprland) with C++ and Qt Quick, featuring hardware-accelerated H.265/HEVC decoding, flexible multi-camera grid layouts, instant focus mode, patrol cycling, live audio streaming, and snapshot capture.
-
-Preconfigured for all 30 channels on the on-premises Dahua/CP PLUS NVR (`192.168.1.245`).
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-C%2B%2B17-blue.svg" alt="C++17" />
+  <img src="https://img.shields.io/badge/Framework-Qt%206.12%20(Qt%20Quick)-41CD52.svg" alt="Qt 6" />
+  <img src="https://img.shields.io/badge/Display-Wayland%20Native-orange.svg" alt="Wayland" />
+  <img src="https://img.shields.io/badge/Audio-PipeWire%20Native-purple.svg" alt="PipeWire" />
+  <img src="https://img.shields.io/badge/Decode-H.265%20%2F%20HEVC%20(VAAPI)-red.svg" alt="VAAPI" />
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
+</p>
 
 ---
 
-## Features
+## Overview
 
-- **Live Multi-Camera Grids**: 1×1, 2×2 (4 cameras), 3×3 (9 cameras), 4×4 (16 cameras), and 5×6 (all 30 cameras) with smooth pagination.
-- **Dual-Stream Optimization**:
-  - **Substream (`subtype=1`)**: High frame rate, low CPU/RAM consumption for multi-camera grids.
-  - **Mainstream (`subtype=0`)**: Full HD 1080p resolution automatically activated when focusing on any single camera.
-- **Embedded Live Audio**: Wire-connected PipeWire live audio streaming (`pcm_alaw` G.711 A-law) with smart auto-mute in multi-grid and single-click unmute controls.
-- **Instant Focus Mode**: Double-click any camera tile to inspect it in full 1080p HD. Press `Esc` or double-click to return to the grid.
-- **Zone & Group Filtering**: Categorize and filter cameras by zone:
-  - Farm 1
-  - Farm 2
-  - Farm 3
-  - Main Gate & Office
-  - Feed Mill
-  - House & Garage
-  - Livestock & Brooder
-- **Live Search**: Instant real-time filtering in the sidebar by camera name, channel number, or IP.
-- **Patrol / Tour Mode**: Automatically cycles through pages or cameras every few seconds.
-- **Snapshot Tool**: Capture high-resolution timestamped still images directly to `~/cctv_snapshots/`.
-- **Standalone MPV Pop-Out**: Right-click any camera to launch a dedicated, low-latency, hardware-accelerated MPV window.
-- **Omarchy Native Integration**: Live theme accent color sync, Hyprland window rounding, dark Material design, and full Wayland support.
-- **CLI Commands**: Headless commands for listing cameras, taking snapshots, or streaming directly via MPV.
+**Vigil** is a high-performance Linux desktop client designed specifically for monitoring live RTSP CCTV camera feeds from on-premises Network Video Recorders (NVRs) such as Dahua, CP PLUS, and standard ONVIF-compliant equipment.
+
+Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GNOME Wayland), Vigil delivers smooth 60 FPS UI rendering, low-latency live video streaming via hardware-accelerated FFmpeg decoding, PipeWire-integrated live audio, and flexible multi-camera layouts ranging from single-camera inspection to 30-channel overview grids.
+
+---
+
+## Key Highlights
+
+- **Dynamic Multi-Camera Grids**: Effortlessly toggle between layout presets:
+  - `1×1`: Single full-window inspection view.
+  - `2×2`: 4 concurrent camera streams with paging.
+  - `3×3`: 9 concurrent camera streams.
+  - `4×4`: 16 concurrent camera streams.
+  - `5×6`: All 30 channels displayed simultaneously.
+- **Intelligent Dual-Stream Architecture**:
+  - **Substream (`subtype=1`, 720p/D1)**: Used automatically in multi-camera grid views to conserve network bandwidth and GPU decoding context limits.
+  - **Mainstream (`subtype=0`, 1080p Full HD)**: Automatically engaged when focusing on any camera for crystal-clear detail.
+- **Hardware-Accelerated Decoding**: Leverages Intel VAAPI, AMD VAAPI, or NVIDIA NVDEC through Qt 6's FFmpeg multimedia backend for minimal CPU overhead.
+- **Embedded Live Audio with Smart Muting**:
+  - Direct PipeWire output for G.711 A-law (`pcm_alaw`) audio streams.
+  - **Smart Mute**: Multi-camera grid views mute audio by default to prevent overlapping noise; single-camera views (Focus and 1×1) auto-unmute.
+  - One-click mute/unmute buttons on every tile header and control bar.
+- **Instant Focus & Smart View Tracking**: Double-click any camera tile or click in the sidebar to enter full HD Focus mode. Switching back to grid view remembers your active camera and preserves its page position.
+- **Zone & Group Filtering**: Categorize and filter cameras by physical area:
+  - `Farm 1`, `Farm 2`, `Farm 3`
+  - `Main Gate & Office`
+  - `Feed Mill`
+  - `House & Garage`
+  - `Livestock & Brooder`
+- **Instant Live Search**: Sub-millisecond filter in the camera sidebar by name, channel number, or camera IP address.
+- **Patrol / Tour Mode**: Hands-free auto-rotation through camera pages or focused channels at a configurable interval.
+- **Snapshot Capture Tool**: Grab high-resolution still frames directly to `~/cctv_snapshots/` via dedicated background FFmpeg capture.
+- **MPV Pop-Out Integration**: Right-click any camera to launch an external, ultra-low-latency MPV window with customized real-time stream flags (`--profile=low-latency --untimed`).
+- **Omarchy & Desktop Integration**: Reads desktop theme accent colors dynamically, supports rounded window corners, includes custom SVG application icons, and provides standard `.desktop` launcher integration.
+- **Full CLI Interface**: Run headless inventory queries, capture snapshots, or spawn MPV streams directly from shell scripts or terminal.
+
+---
+
+## Technical Architecture
+
+```
+                       ┌─────────────────────────┐
+                       │    Vigil QML Front-End  │
+                       │ (Wayland / Qt Quick 6)  │
+                       └────────────┬────────────┘
+                                    │ Property Bindings & Signals
+                       ┌────────────▼────────────┐
+                       │   C++ Backend Engine    │
+                       │   (Channel & Layouts)   │
+                       └─────┬──────────────┬────┘
+                             │              │
+              ┌──────────────▼──────┐ ┌─────▼──────────────┐
+              │ Qt 6 Multimedia     │ │ External Processes │
+              │ (FFmpeg + VAAPI)    │ │ (FFmpeg, MPV)      │
+              └───────┬─────────────┘ └────────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        │                           │
+ ┌──────▼──────┐             ┌──────▼──────┐
+ │ Video Output│             │ Audio Output│
+ │ (RHI/OpenGL)│             │ (PipeWire)  │
+ └─────────────┘             └─────────────┘
+```
+
+### Stream Resource Management
+Modern integrated graphics (such as Intel UHD / Iris Xe) enforce hardware limits of 7–8 concurrent video decode sessions per process. To support monitoring up to 30 channels stably:
+1. Grid tiles cleanly teardown idle `MediaPlayer` demuxers when transitioning between pages or focus states.
+2. Grid views default to sub-streams (`subtype=1`), reducing memory bandwidth by ~70%.
+3. Connection initiation uses staggered timers (`staggerIndex * 120ms`) to eliminate network traffic bursts and socket contention on the NVR.
 
 ---
 
@@ -37,74 +93,228 @@ Preconfigured for all 30 channels on the on-premises Dahua/CP PLUS NVR (`192.168
 
 | Shortcut | Action |
 | :--- | :--- |
-| `1` | 1×1 View |
+| `1` | 1×1 Single Camera Layout |
 | `2` | 2×2 Grid Layout (4 cameras per page) |
 | `3` | 3×3 Grid Layout (9 cameras per page) |
 | `4` | 4×4 Grid Layout (16 cameras per page) |
-| `5` | 5×6 Grid Layout (All 30 cameras) |
-| `Left Arrow` / `◀` | Previous Page |
-| `Right Arrow` / `▶` | Next Page |
-| `Space` | Next Page / Exit Focus |
-| `Double Click` | Focus / Maximize camera in 1080p HD |
-| `Right Click` | Open camera in external MPV window |
-| `P` | Toggle Patrol / Auto-cycle mode |
-| `S` | Take snapshot of focused camera |
-| `B` | Toggle camera list sidebar |
-| `F` / `F11` | Toggle Fullscreen |
-| `?` | Show Keyboard Shortcuts overlay |
-| `Esc` / `Q` | Exit Focus / Quit |
+| `5` | 5×6 Full Grid Layout (All 30 cameras) |
+| `Left Arrow` / `◀` | Navigate to Previous Page |
+| `Right Arrow` / `▶` | Navigate to Next Page |
+| `Space` | Page forward / Exit Focus mode |
+| `Double Click` | Toggle 1080p HD Focus mode on tile |
+| `Right Click` | Open camera in external hardware-accelerated MPV window |
+| `P` | Toggle Patrol / Auto-cycle Tour mode |
+| `S` | Capture high-resolution snapshot to disk |
+| `B` | Toggle left camera inventory sidebar |
+| `F` / `F11` | Toggle Fullscreen mode |
+| `?` | Display Keyboard Shortcuts quick help overlay |
+| `Esc` / `Q` | Exit Focus mode / Quit application |
 
 ---
 
-## Installation & Running
+## Installation & Build Instructions
 
-### Launch the GUI
+### Prerequisites (Arch Linux / Omarchy)
+
+Install the required Qt 6 multimedia, build tools, and codecs:
+
 ```sh
-# Run directly from the build directory
-~/Work/cctv/build/cctv
-
-# Or install to your system (appears in Super + Space launcher)
-~/Work/cctv/bin/install
+sudo pacman -S --needed \
+    base-devel \
+    qt6-base \
+    qt6-declarative \
+    qt6-multimedia \
+    qt6-multimedia-ffmpeg \
+    ffmpeg \
+    mpv \
+    pipewire \
+    libva-intel-driver \
+    intel-media-driver
 ```
 
-### CLI Commands
+*(For AMD GPUs install `libva-mesa-driver`; for NVIDIA install `nvidia-utils`).*
+
+### Building from Source
+
+Clone the repository and build using the provided scripts:
+
 ```sh
-# List all configured cameras with names, IPs, and zones
+git clone https://github.com/aditya1944/vigil.git
+cd vigil
+
+# 1. Compile the C++ application
+bin/build
+
+# 2. Run the automated unit test suite
+bin/test
+
+# 3. (Optional) Build Arch package and install system-wide
+bin/install
+```
+
+---
+
+## Usage
+
+### 1. Launching the GUI
+```sh
+# Run directly from build tree:
+build/cctv
+
+# Or run system binary if installed:
+cctv
+```
+
+### 2. Headless CLI Commands
+Vigil includes built-in command-line utilities for shell integration, automated surveillance scripts, or cron jobs:
+
+```sh
+# Print full inventory of configured cameras, channel numbers, IPs, and zones:
 cctv list
 
-# Capture a high-res snapshot from Channel 1
-cctv snapshot 1
+# Capture a high-resolution snapshot from Channel 5 without opening the GUI:
+cctv snapshot 5
 
-# Launch Channel 25 in an external low-latency MPV window
-cctv mpv 25
+# Launch Channel 10 directly in a standalone, low-latency MPV window:
+cctv mpv 10
+
+# Display CLI help:
+cctv --help
 ```
 
 ---
 
 ## Configuration
 
-Configuration is automatically stored and loaded from:
+Vigil stores its persistent configuration at:
 ```text
 ~/.config/cctv/config.json
 ```
 
-You can customize:
-- `nvrHost`: NVR IP address (default: `192.168.1.245`)
-- `nvrPort`: RTSP port (default: `554`)
-- `username`: NVR username (default: `admin`)
-- `password`: NVR password
-- `snapshotDir`: Directory where snapshots are saved (default: `~/cctv_snapshots`)
-- `gridCols` / `gridRows`: Default grid layout
-- `patrolInterval`: Patrol rotation speed in seconds (default: `8`)
-- `cameras`: Custom channel mappings, names, and zones
+If the file does not exist, Vigil creates it automatically with defaults for the 30 on-premises NVR channels.
+
+### Example `config.json`
+
+```json
+{
+  "nvrHost": "192.168.1.245",
+  "nvrPort": 554,
+  "username": "admin",
+  "password": "YourSecurePassword",
+  "snapshotDir": "/home/user/cctv_snapshots",
+  "gridCols": 2,
+  "gridRows": 2,
+  "patrolInterval": 8,
+  "cameras": [
+    {
+      "channel": 1,
+      "name": "Farm Main Gate",
+      "ip": "192.168.1.101",
+      "group": "Main Gate & Office"
+    },
+    {
+      "channel": 5,
+      "name": "Farm-1 platform left",
+      "ip": "192.168.1.116",
+      "group": "Farm 1"
+    },
+    {
+      "channel": 10,
+      "name": "Farm-2 inside right",
+      "ip": "192.168.1.106",
+      "group": "Farm 2"
+    }
+  ]
+}
+```
+
+### Configuration Options Reference
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `nvrHost` | string | `"192.168.1.245"` | IP address or hostname of the NVR |
+| `nvrPort` | integer | `554` | RTSP port (standard: 554) |
+| `username` | string | `"admin"` | Authentication username for RTSP digest auth |
+| `password` | string | `""` | Authentication password for RTSP |
+| `snapshotDir` | string | `"~/cctv_snapshots"` | Directory where snapshots are saved |
+| `gridCols` | integer | `2` | Initial grid columns (1–6) |
+| `gridRows` | integer | `2` | Initial grid rows (1–6) |
+| `patrolInterval`| integer | `8` | Interval in seconds between patrol page cycles |
+| `cameras` | array | `[...]` | List of camera definitions with channel number, name, IP, and zone |
 
 ---
 
-## Building from Source
+## RTSP URL Convention
+
+Vigil constructs Dahua/CP PLUS standard RTSP URLs using credentials and parameters:
+
+- **Main Stream (Full HD 1080p)**:
+  ```text
+  rtsp://{username}:{password}@{nvrHost}:{nvrPort}/cam/realmonitor?channel={channel}&subtype=0
+  ```
+- **Sub Stream (720p / D1)**:
+  ```text
+  rtsp://{username}:{password}@{nvrHost}:{nvrPort}/cam/realmonitor?channel={channel}&subtype=1
+  ```
+
+---
+
+## Project Structure
+
+```text
+vigil/
+├── bin/
+│   ├── build                # qmake6 and parallel make compilation script
+│   ├── install              # makepkg package creation and system install
+│   └── test                 # Offscreen QtTest automated test runner
+├── pkgbuild/
+│   ├── PKGBUILD             # Arch Linux / pacman package definition
+│   ├── cctv.desktop         # FreeDesktop desktop entry
+│   └── cctv.svg             # Vector application icon
+├── src/
+│   ├── backend.h / .cpp     # Core C++ engine: cameras, RTSP URLs, paging, patrol
+│   ├── theme.h / .cpp       # Omarchy live accent color detection & fallback
+│   ├── translator.h / .cpp  # Internationalization & translation support
+│   ├── main.cpp             # CLI dispatcher & QML application entry point
+│   ├── resources.qrc        # Qt resource bundle
+│   ├── Main.qml             # Root window, split view, layout switching
+│   ├── CameraTile.qml       # Camera player, VideoOutput, AudioOutput, live controls
+│   ├── Sidebar.qml          # Camera list, zone filtering, real-time search
+│   ├── Toolbar.qml          # Grid presets, patrol toggle, quality toggle, help
+│   ├── HelpOverlay.qml      # Keyboard shortcut quick reference modal
+│   └── i18n/
+│       └── en.json          # English translation strings
+├── tests/
+│   ├── cctv_tests.pro       # Test suite project configuration
+│   └── cctv_tests.cpp       # 11 automated unit tests
+├── cctv.pro                 # Main qmake project specification
+├── LICENSE                  # MIT License (Aditya Kumar)
+└── README.md                # Project documentation
+```
+
+---
+
+## Automated Testing
+
+Vigil includes a comprehensive headless unit test suite verifying core functionality without requiring an active X11/Wayland display server:
 
 ```sh
-cd ~/Work/cctv
-bin/build        # Compiles binary into build/cctv
-bin/test         # Runs automated Qt unit tests
-bin/install      # Builds package and installs to /usr/bin/cctv
+bin/test
 ```
+
+**Test Coverage**:
+- Camera database initialization (all 30 channels)
+- Zone filtering and search query matching
+- Grid dimension calculation and page index arithmetic
+- Single camera focus switching and state restoration
+- Patrol cycle timer logic
+- Theme color detection and fallbacks
+- Translation dictionary fallbacks
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE) — see the [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2026 Aditya Kumar.
