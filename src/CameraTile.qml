@@ -22,6 +22,7 @@ Rectangle {
 
     MediaPlayer {
         id: player
+        videoOutput: videoOutput
         source: root.streamUrl
         audioOutput: null
         loops: MediaPlayer.Infinite
@@ -64,6 +65,25 @@ Rectangle {
         id: videoOutput
         anchors.fill: parent
         fillMode: VideoOutput.PreserveAspectFit
+        z: 0
+    }
+
+    MouseArea {
+        id: mouseArea
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        z: 1
+
+        onDoubleClicked: {
+            backend.toggleFocus(root.channel)
+        }
+
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton) {
+                backend.openExternalMpv(root.channel)
+            }
+        }
     }
 
     // Loading / Standby overlay when video is connecting
@@ -71,6 +91,7 @@ Rectangle {
         anchors.fill: parent
         color: "#18181f"
         visible: player.playbackState !== MediaPlayer.PlayingState
+        z: 2
 
         Column {
             anchors.centerIn: parent
@@ -99,6 +120,7 @@ Rectangle {
         anchors.right: parent.right
         height: 34
         color: Qt.rgba(0, 0, 0, 0.72)
+        z: 3
 
         Row {
             anchors.left: parent.left
@@ -179,6 +201,7 @@ Rectangle {
         color: Qt.rgba(0, 0, 0, 0.75)
         visible: mouseArea.containsMouse || root.isFocused
         opacity: visible ? 1.0 : 0.0
+        z: 3
 
         Behavior on opacity {
             NumberAnimation { duration: 150 }
@@ -220,23 +243,6 @@ Rectangle {
                 onClicked: backend.openExternalMpv(root.channel)
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Open in external hardware-accelerated MPV")
-            }
-        }
-    }
-
-    MouseArea {
-        id: mouseArea
-        anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-
-        onDoubleClicked: {
-            backend.toggleFocus(root.channel)
-        }
-
-        onClicked: (mouse) => {
-            if (mouse.button === Qt.RightButton) {
-                backend.openExternalMpv(root.channel)
             }
         }
     }
