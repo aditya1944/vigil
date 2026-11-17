@@ -237,6 +237,7 @@ ApplicationWindow {
                         }
                     }
                 }
+            }
 
                 // Historical Playback View
                 PlaybackView {
