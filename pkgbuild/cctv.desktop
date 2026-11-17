@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CCTV
+GenericName=Camera Live Monitor
+Comment=Live feed monitor for all CCTV cameras
+Exec=cctv %f
+Icon=cctv
+Terminal=false
+Categories=AudioVideo;Video;Network;Monitor;
+StartupWMClass=cctv
+Keywords=cctv;camera;surveillance;rtsp;dahua;stream;security;

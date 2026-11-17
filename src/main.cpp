@@ -1,0 +1,101 @@
+// cctv — Live feed multi-camera client for Dahua / Omarchy.
+
+#include <QGuiApplication>
+#include <QCommandLineParser>
+#include <QCommandLineOption>
+#include <QIcon>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQuickStyle>
+#include <QUrl>
+#include <QProcess>
+#include <QDateTime>
+#include <QDir>
+#include <iostream>
+
+#include "backend.h"
+#include "theme.h"
+#include "translator.h"
+
+int main(int argc, char *argv[]) {
+    // Check for CLI subcommands before QGuiApplication initializes the display connection
+    bool isCli = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h" || arg == "help" ||
+            arg == "list" || arg == "snapshot" || arg == "mpv") {
+            isCli = true;
+            break;
+        }
+    }
+
+    if (isCli) {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+        qputenv("QT_QPA_PLATFORMTHEME", "");
+    }
+
+    QGuiApplication app(argc, argv);
+    app.setApplicationName("cctv");
+    app.setApplicationVersion("0.1.0");
+    app.setDesktopFileName("cctv");
+    app.setWindowIcon(QIcon::fromTheme("cctv"));
+
+    // Handle CLI arguments
+    const QStringList args = app.arguments();
+    if (args.size() > 1) {
+        const QString cmd = args.at(1);
+        if (cmd == "--help" || cmd == "-h" || cmd == "help") {
+            std::cout << "CCTV Live Feed Client\n"
+                      << "Usage:\n"
+                      << "  cctv                    Launch the live viewer GUI\n"
+                      << "  cctv list               List all configured cameras\n"
+                      << "  cctv snapshot <ch>      Capture snapshot from channel <ch>\n"
+                      << "  cctv mpv <ch>           Open channel in standalone MPV\n"
+                      << "  cctv --help             Show this help message\n";
+            return 0;
+        } else if (cmd == "list") {
+            Backend b;
+            const auto cams = b.cameras();
+            std::cout << "Configured CCTV Cameras (" << cams.size() << " total):\n";
+            for (const auto &v : cams) {
+                const auto m = v.toMap();
+                std::cout << "  Ch " << m.value("channel").toInt()
+                          << "\t[" << m.value("group").toString().toStdString() << "]\t"
+                          << m.value("name").toString().toStdString()
+                          << " (" << m.value("ip").toString().toStdString() << ")\n";
+            }
+            return 0;
+        } else if (cmd == "snapshot" && args.size() > 2) {
+            const int ch = args.at(2).toInt();
+            Backend b;
+            b.takeSnapshot(ch);
+            std::cout << "Initiated snapshot capture for Channel " << ch << "\n";
+            return 0;
+        } else if (cmd == "mpv" && args.size() > 2) {
+            const int ch = args.at(2).toInt();
+            Backend b;
+            b.openExternalMpv(ch);
+            return 0;
+        }
+    }
+
+    QQuickStyle::setStyle("Material");
+
+    Translator translator;
+    app.installTranslator(&translator);
+
+    Theme theme;
+    Backend backend;
+
+    QQmlApplicationEngine engine;
+    QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
+    engine.rootContext()->setContextProperty("translator", &translator);
+    engine.rootContext()->setContextProperty("theme", &theme);
+    engine.rootContext()->setContextProperty("backend", &backend);
+
+    engine.load(QUrl("qrc:/Main.qml"));
+    if (engine.rootObjects().isEmpty())
+        return 1;
+
+    return app.exec();
+}
