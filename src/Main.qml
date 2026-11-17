@@ -95,6 +95,13 @@ ApplicationWindow {
             if (backend.activeMode === "playback") playbackView.zoomOut()
         }
     }
+    Shortcut {
+        sequence: "0"
+        context: Qt.ApplicationShortcut
+        onActivated: {
+            if (backend.activeMode === "playback") playbackView.fitTimeline()
+        }
+    }
     Shortcut { sequence: "P"; context: Qt.ApplicationShortcut; onActivated: backend.togglePatrol() }
     Shortcut { sequence: "B"; context: Qt.ApplicationShortcut; onActivated: win.sidebarVisible = !win.sidebarVisible }
     Shortcut {

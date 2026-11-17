@@ -79,19 +79,69 @@ Rectangle {
         osdTimer.restart()
     }
 
+    // Responsive Timeline Scaling:
+    // When zoomFactor is 1.0, timelineTotalWidth exactly matches the screen/viewport width.
+    // All 24 hours fit completely on screen without horizontal spilling!
+    property real zoomFactor: 1.0
+    readonly property real fitHourWidth: (timelineFlickable && timelineFlickable.width > 0) ? (timelineFlickable.width / 24.0) : 40.0
+    readonly property real timelineHourWidth: fitHourWidth * zoomFactor
+    readonly property real timelineTotalWidth: (timelineFlickable && timelineFlickable.width > 0) ? Math.max(timelineFlickable.width, timelineFlickable.width * zoomFactor) : 960.0
+
     function zoomIn() {
-        root.timelineHourWidth = Math.min(300, root.timelineHourWidth + 20)
+        root.zoomFactor = Math.min(8.0, root.zoomFactor + 0.5)
+        root.centerOnPlayhead()
     }
 
     function zoomOut() {
-        root.timelineHourWidth = Math.max(35, root.timelineHourWidth - 20)
+        root.zoomFactor = Math.max(1.0, root.zoomFactor - 0.5)
+        if (root.zoomFactor <= 1.0) {
+            timelineFlickable.contentX = 0
+        } else {
+            root.centerOnPlayhead()
+        }
+    }
+
+    function fitTimeline() {
+        root.zoomFactor = 1.0
+        timelineFlickable.contentX = 0
     }
 
     function centerOnPlayhead() {
+        if (root.zoomFactor <= 1.0) {
+            timelineFlickable.contentX = 0
+            return
+        }
         var xPos = (root.currentPlaybackSecs / 86400) * root.timelineTotalWidth
         var targetContentX = Math.max(0, Math.min(timelineFlickable.contentWidth - timelineFlickable.width,
                                                   xPos - (timelineFlickable.width / 2)))
         timelineFlickable.contentX = targetContentX
+    }
+
+    function findClipAtSecs(secs) {
+        for (var i = 0; i < backend.playbackClips.length; ++i) {
+            var clip = backend.playbackClips[i]
+            var s = root.timeToSecs(clip.startTimeDisplay)
+            var e = root.timeToSecs(clip.endTimeDisplay)
+            if (e <= s) e = s + (clip.durationSecs || 3600)
+            if (secs >= s && secs <= e) {
+                return clip
+            }
+        }
+        return null
+    }
+
+    function findNextClipAfter(secs) {
+        var closest = null
+        for (var i = 0; i < backend.playbackClips.length; ++i) {
+            var clip = backend.playbackClips[i]
+            var s = root.timeToSecs(clip.startTimeDisplay)
+            if (s > secs) {
+                if (!closest || s < root.timeToSecs(closest.startTimeDisplay)) {
+                    closest = clip
+                }
+            }
+        }
+        return closest
     }
 
     function seekToSecs(targetSecs) {
@@ -102,16 +152,29 @@ Rectangle {
             playbackPlayer.seek(Math.max(0, offsetMs))
             root.osdText = "⏱ " + root.secsToTime(targetSecs)
             osdTimer.restart()
-        } else {
-            var timeStr = root.secsToTime(targetSecs)
-            backend.startPlayback(backend.playbackChannel, backend.playbackDate, timeStr, "23:59:59")
+            return
         }
+
+        var clip = root.findClipAtSecs(targetSecs)
+        if (clip) {
+            backend.startPlayback(backend.playbackChannel, backend.playbackDate, root.secsToTime(targetSecs), clip.endTimeDisplay)
+            root.osdText = "▶ " + root.secsToTime(targetSecs)
+        } else {
+            var nextClip = root.findNextClipAfter(targetSecs)
+            if (nextClip) {
+                root.osdText = "⏭ Jump to recording at " + nextClip.startTimeDisplay
+                backend.startPlayback(backend.playbackChannel, backend.playbackDate, nextClip.startTimeDisplay, nextClip.endTimeDisplay)
+            } else {
+                var timeStr = root.secsToTime(targetSecs)
+                root.osdText = "⏱ " + timeStr + " (No recording)"
+                backend.startPlayback(backend.playbackChannel, backend.playbackDate, timeStr, "23:59:59")
+            }
+        }
+        osdTimer.restart()
     }
 
     property bool isAudioMuted: false
     property string osdText: ""
-    property real timelineHourWidth: 80 // Pixels per hour (80 * 24 = 1920px default)
-    readonly property real timelineTotalWidth: Math.max(timelineFlickable.width, 24 * timelineHourWidth)
 
     // Current wall-clock second of the day (0 to 86400)
     readonly property real currentPlaybackSecs: {
@@ -673,20 +736,88 @@ Rectangle {
         // =========================================================================
         Rectangle {
             Layout.fillWidth: true
-            height: 110
+            height: 126
             color: "#0d0d14"
             border.color: "#1e1e28"
             border.width: 1
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: 2
+                spacing: 3
                 anchors.margins: 6
 
-                // --- 24-Hour Scrollable / Zoomable Timeline Ruler ---
+                // --- 24-Hour Timeline Legend & Live Range Status ---
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    Text {
+                        text: qsTr("24-HOUR TIMELINE • %1").arg(backend.playbackDate)
+                        color: "#9ca3af"
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // Legend: Recorded Footage
+                    Row {
+                        spacing: 5
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 12
+                            height: 12
+                            radius: 2
+                            color: "#10b981"
+                            border.color: "#34d399"
+                            border.width: 1
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("Recorded Footage (%1 clips)").arg(backend.playbackClips.length)
+                            color: "#34d399"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                    }
+
+                    // Legend: No Recording
+                    Row {
+                        spacing: 5
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 12
+                            height: 12
+                            radius: 2
+                            color: "#1c1c28"
+                            border.color: "#38384f"
+                            border.width: 1
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("No Recording")
+                            color: "#858598"
+                            font.pixelSize: 11
+                        }
+                    }
+
+                    Rectangle { width: 1; height: 14; color: "#2d2d3d" }
+
+                    // Status display (Hover time or Current Playhead)
+                    Text {
+                        text: timelineItem.hoverSecs >= 0 
+                              ? qsTr("Hover: %1").arg(root.secsToTime(timelineItem.hoverSecs))
+                              : qsTr("Playhead: %1").arg(root.secsToTime(root.currentPlaybackSecs))
+                        color: timelineItem.hoverSecs >= 0 ? "#38bdf8" : "#ef4444"
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+                }
+
+                // --- 24-Hour Ruler & Track (Screen Fitted by Default) ---
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 48
+                    height: 52
                     color: "#08080c"
                     border.color: "#222232"
                     border.width: 1
@@ -708,106 +839,173 @@ Rectangle {
                             height: parent.height
                             property real hoverSecs: -1
 
-                            // Background hour grid lines & hour labels
+                            // Top Hour Marks (y: 0 to 18)
                             Row {
-                                anchors.fill: parent
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: 18
+
                                 Repeater {
                                     model: 24
-                                    Rectangle {
+                                    Item {
                                         width: root.timelineTotalWidth / 24
-                                        height: parent.height
-                                        color: index % 2 === 0 ? "transparent" : "#0c0c16"
-                                        border.color: "#1a1a26"
-                                        border.width: 1
+                                        height: 18
 
                                         Text {
                                             anchors.top: parent.top
                                             anchors.topMargin: 2
                                             anchors.left: parent.left
-                                            anchors.leftMargin: 3
-                                            text: (index < 10 ? "0" + index : "" + index) + ":00"
+                                            anchors.leftMargin: 2
+                                            text: {
+                                                var w = root.timelineTotalWidth / 24
+                                                if (w >= 36) return (index < 10 ? "0" + index : "" + index) + ":00"
+                                                if (w >= 20) return (index % 2 === 0 ? (index < 10 ? "0" + index : "" + index) + "h" : "")
+                                                return (index % 4 === 0 ? (index < 10 ? "0" + index : "" + index) + "h" : "")
+                                            }
                                             color: "#6b7280"
                                             font.pixelSize: 10
                                         }
 
-                                        // 30-minute sub-tick
+                                        // 30-minute sub-tick mark
                                         Rectangle {
-                                            anchors.centerIn: parent
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            anchors.bottom: parent.bottom
                                             width: 1
-                                            height: 8
-                                            color: "#222233"
+                                            height: 5
+                                            color: "#262638"
                                         }
                                     }
                                 }
                             }
 
-                            // Recorded Segments Colored Bands (from NVR clips)
+                            // Full-height 1-hour vertical dividing lines across track
+                            Row {
+                                anchors.fill: parent
+                                Repeater {
+                                    model: 24
+                                    Item {
+                                        width: root.timelineTotalWidth / 24
+                                        height: parent.height
+
+                                        Rectangle {
+                                            anchors.right: parent.right
+                                            width: 1
+                                            height: parent.height
+                                            color: "#1e1e2d"
+                                            z: 3
+                                        }
+                                    }
+                                }
+                            }
+
+                            // --- Track Bar: (y: 19 to 47, height 28) ---
+                            // 1. "No Recording" Base Track (dark slate/charcoal)
+                            Rectangle {
+                                id: noRecordingTrack
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                y: 19
+                                height: 28
+                                radius: 3
+                                color: "#1c1c28"
+                                border.color: "#2e2e42"
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: backend.playbackClips.length === 0
+                                    text: backend.queryingClips ? qsTr("Querying NVR recorded files...") : qsTr("No recorded clips found for this date (All 24 hours unrecorded)")
+                                    color: "#525266"
+                                    font.pixelSize: 11
+                                }
+                            }
+
+                            // 2. "Recorded Footage" Segments (vibrant emerald green)
                             Repeater {
                                 model: backend.playbackClips
                                 delegate: Rectangle {
                                     readonly property real startSec: root.timeToSecs(modelData.startTimeDisplay)
-                                    readonly property real endSec: root.timeToSecs(modelData.endTimeDisplay)
-                                    x: (startSec / 86400) * root.timelineTotalWidth
-                                    y: 18
-                                    width: Math.max(4, ((endSec - startSec) / 86400) * root.timelineTotalWidth)
-                                    height: 20
+                                    readonly property real endSec: {
+                                        var s = startSec
+                                        var e = root.timeToSecs(modelData.endTimeDisplay)
+                                        if (e <= s) e = s + (modelData.durationSecs || 3600)
+                                        return Math.min(86400, e)
+                                    }
+                                    x: Math.round((startSec / 86400) * root.timelineTotalWidth)
+                                    y: 19
+                                    width: Math.max(3, Math.round(((endSec - startSec) / 86400) * root.timelineTotalWidth))
+                                    height: 28
                                     radius: 2
-                                    color: "#10b981"
-                                    opacity: 0.75
+                                    color: clipHover.containsMouse ? "#34d399" : "#10b981"
+                                    border.color: clipHover.containsMouse ? "#6ee7b7" : "#059669"
+                                    border.width: 1
+                                    z: 2
+
+                                    // Subtle top highlight
+                                    Rectangle {
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 2
+                                        color: "#a7f3d0"
+                                        opacity: 0.6
+                                    }
 
                                     ToolTip.visible: clipHover.containsMouse
-                                    ToolTip.text: modelData.startTimeDisplay + " - " + modelData.endTimeDisplay + " (" + modelData.durationStr + ")"
+                                    ToolTip.text: qsTr("RECORDED FOOTAGE\n%1 → %2\nDuration: %3 • Size: %4 MB").arg(modelData.startTimeDisplay).arg(modelData.endTimeDisplay).arg(modelData.durationStr).arg(modelData.sizeMb)
 
                                     HoverHandler { id: clipHover }
                                 }
                             }
 
-                            // Hover Guide Line & Time Flag
+                            // 3. Hover Guide Line & Hover Time Flag
                             Rectangle {
                                 id: hoverGuideLine
-                                x: timelineItem.hoverSecs >= 0 ? (timelineItem.hoverSecs / 86400) * root.timelineTotalWidth : -10
+                                x: timelineItem.hoverSecs >= 0 ? Math.round((timelineItem.hoverSecs / 86400) * root.timelineTotalWidth) : -10
                                 y: 0
                                 width: 1
                                 height: parent.height
-                                color: "#94a3b8"
-                                opacity: 0.6
+                                color: "#38bdf8"
+                                opacity: 0.8
                                 visible: timelineItem.hoverSecs >= 0 && !timelineMouseArea.pressed
-                                z: 3
+                                z: 4
 
                                 Rectangle {
                                     anchors.bottom: parent.top
+                                    anchors.bottomMargin: 1
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    width: 48
-                                    height: 14
-                                    radius: 2
-                                    color: "#334155"
+                                    width: 52
+                                    height: 16
+                                    radius: 3
+                                    color: "#0284c7"
                                     Text {
                                         anchors.centerIn: parent
                                         text: root.secsToTime(timelineItem.hoverSecs)
                                         color: "white"
-                                        font.pixelSize: 8
+                                        font.pixelSize: 9
                                         font.bold: true
                                     }
                                 }
                             }
 
-                            // Current Time Playhead Cursor (Needle)
+                            // 4. Playhead Needle & Red Time Flag
                             Rectangle {
                                 id: playheadNeedle
-                                x: (root.currentPlaybackSecs / 86400) * root.timelineTotalWidth - 1
+                                x: Math.round((root.currentPlaybackSecs / 86400) * root.timelineTotalWidth) - 1
                                 y: 0
                                 width: 2
                                 height: parent.height
                                 color: "#ef4444"
-                                z: 4
+                                z: 5
 
-                                // Top handle flag displaying current time
                                 Rectangle {
                                     anchors.bottom: parent.top
+                                    anchors.bottomMargin: 1
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     width: 52
                                     height: 16
-                                    radius: 2
+                                    radius: 3
                                     color: "#ef4444"
                                     Text {
                                         anchors.centerIn: parent
@@ -819,13 +1017,14 @@ Rectangle {
                                 }
                             }
 
-                            // Unified Interactive Timeline Scrubbing & Wheel Area
+                            // 5. Interactive Timeline Scrubbing MouseArea
                             MouseArea {
                                 id: timelineMouseArea
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 acceptedButtons: Qt.LeftButton
+                                z: 10
 
                                 function handleMouse(mouseX) {
                                     var ratio = Math.max(0, Math.min(1.0, mouseX / root.timelineTotalWidth))
@@ -856,15 +1055,17 @@ Rectangle {
                                             root.zoomOut()
                                         }
                                     } else {
-                                        timelineFlickable.contentX = Math.max(0, Math.min(timelineFlickable.contentWidth - timelineFlickable.width,
-                                                                                           timelineFlickable.contentX - (wheel.angleDelta.y * 1.5)))
+                                        if (root.zoomFactor > 1.0) {
+                                            timelineFlickable.contentX = Math.max(0, Math.min(timelineFlickable.contentWidth - timelineFlickable.width,
+                                                                                               timelineFlickable.contentX - (wheel.angleDelta.y * 1.5)))
+                                        }
                                     }
                                 }
                             }
                         }
 
                         ScrollBar.horizontal: ScrollBar {
-                            policy: timelineFlickable.contentWidth > timelineFlickable.width ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+                            policy: timelineFlickable.contentWidth > timelineFlickable.width + 2 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                             height: 4
                         }
                     }
@@ -972,7 +1173,18 @@ Rectangle {
 
                     Rectangle { width: 1; height: 18; color: "#272738" }
 
-                    // Timeline Zoom & Center Buttons
+                    // Timeline Zoom, Fit & Center Buttons
+                    Button {
+                        text: qsTr("Fit 24h")
+                        flat: root.zoomFactor > 1.0
+                        highlighted: root.zoomFactor <= 1.0
+                        implicitHeight: 26
+                        padding: 2
+                        onClicked: root.fitTimeline()
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Fit all 24 hours to screen width (no horizontal scrolling)")
+                    }
+
                     Button {
                         text: "Zoom -"
                         flat: true
@@ -980,7 +1192,7 @@ Rectangle {
                         padding: 2
                         onClicked: root.zoomOut()
                         ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Zoom out 24-hour timeline ruler")
+                        ToolTip.text: qsTr("Zoom out timeline ruler")
                     }
 
                     Button {
@@ -990,7 +1202,7 @@ Rectangle {
                         padding: 2
                         onClicked: root.zoomIn()
                         ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Zoom in 24-hour timeline ruler")
+                        ToolTip.text: qsTr("Zoom in timeline ruler for minute-level detail")
                     }
 
                     Button {

@@ -34,8 +34,14 @@ Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GN
 - **Intelligent Dual-Stream Architecture**:
   - **Substream (`subtype=1`, 720p/D1)**: Used automatically in multi-camera grid views to conserve network bandwidth and GPU decoding context limits.
   - **Mainstream (`subtype=0`, 1080p Full HD)**: Automatically engaged when focusing on any camera for crystal-clear detail.
-- **Historical Recording Playback & Scrollable Timeline**:
-  - **Scrollable & Zoomable 24-Hour Timeline Ruler**: Visual hour grid markers with colored bands representing recorded NVR clips (`mediaFileFind.cgi`), real-time playhead needle, hover guide cursor with live timestamp preview, click/drag scrubbing, and variable zoom (`35px/hr` to `300px/hr`).
+- **Historical Recording Playback & 24-Hour Timeline Ruler**:
+  - **Auto-Fitted Screen Scaling**: The 24-hour ruler automatically fits to the screen width by default so all hours (`00:00` to `23:59`) are fully visible without spilling or horizontal scrolling.
+  - **High-Contrast Track Differentiation & Legend**:
+    - `🟩 Recorded Footage` (`#10b981` Emerald Green): Displays exact segments queried from NVR (`mediaFileFind.cgi`) with top highlights, durations, and sizes.
+    - `⬛ No Recording` (`#1c1c28` Slate Charcoal): Explicitly indicates unrecorded gaps across the 24-hour track.
+    - Clicking on an unrecorded gap automatically seeks or jumps to the next available recording.
+  - **Zoom & Pan Controls**: Zoom in up to 8× with `Zoom +`, `Ctrl + Wheel`, or `+` / `-` keys; snap back to full screen width anytime with `Fit 24h` or key `0`.
+  - **Playhead & Live Hover Guide**: Red playhead needle tracks active playback position with `🎯 Center` auto-centering; cyan hover needle and timestamp flag preview any point before clicking.
   - **Mouse-Wheel Scrub-to-Seek**: Scroll the mouse wheel directly over the video player to scrub forward/backward (`±5s`, `±30s` with Shift, `±1m` with Ctrl) with an animated On-Screen Display (OSD) time badge.
   - **Horizontally Scrollable Filter Bar**: Flickable top navigation ensuring all camera selection, date/time pickers, and search actions remain accessible on compact or tiled windows.
   - **Scrollable Recordings Drawer**: Lists recorded clips with exact start/end times, durations, file sizes in MB, and one-click play or MPV playback.
@@ -110,7 +116,8 @@ Modern integrated graphics (such as Intel UHD / Iris Xe) enforce hardware limits
 | `Space` | Live / Playback | Next Page or Exit Focus (Live) / Play-Pause Toggle (Playback) |
 | `Mouse Wheel` | Playback Video | Scrub footage (`±5s`; `Shift` for `±30s`, `Ctrl` for `±1m`) |
 | `Timeline Drag` | Playback Ruler | Click or drag to jump to any hour/minute of the day |
-| `Ctrl + Wheel` / `+ -` | Playback Ruler | Zoom 24-hour timeline ruler (`35px/hr` to `300px/hr`) |
+| `Ctrl + Wheel` / `+ -` | Playback Ruler | Zoom 24-hour timeline ruler in / out (up to 8×) |
+| `0` | Playback Ruler | Reset zoom and Fit all 24 hours to screen width |
 | `Double Click` | Live / Playback | Focus camera (Live) / Toggle Fullscreen (Playback) |
 | `Right Click` | Live / Playback | Open camera/clip in external hardware-accelerated MPV window |
 | `P` | Live | Toggle Patrol / Auto-cycle Tour mode |

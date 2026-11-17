@@ -73,7 +73,7 @@ Rectangle {
                         { key: "◀ / ▶", desc: qsTr("Prev/Next Page or Scrub ±5s") },
                         { key: "Mouse Wheel", desc: qsTr("Scrub video (Shift: 30s, Ctrl: 1m)") },
                         { key: "Timeline Drag", desc: qsTr("Click or drag to seek any time") },
-                        { key: "Ctrl + Wheel / + -", desc: qsTr("Zoom 24-hour timeline ruler") },
+                        { key: "Ctrl + Wheel / + - 0", desc: qsTr("Zoom timeline ruler (0: Fit 24h)") },
                         { key: "Double Click", desc: qsTr("Maximize / Fullscreen camera") },
                         { key: "P", desc: qsTr("Toggle Patrol / Auto-Cycle") },
                         { key: "S", desc: qsTr("Snapshot active / focused camera") },
