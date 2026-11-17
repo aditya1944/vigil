@@ -9,11 +9,16 @@
 #include <QDateTime>
 #include <QUrl>
 #include <QDebug>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QAuthenticator>
+#include <QSslError>
 #include <algorithm>
 
 Backend::Backend(QObject *parent)
     : QObject(parent),
-      m_snapshotDir(QDir::homePath() + "/cctv_snapshots") {
+      m_snapshotDir(QDir::homePath() + "/cctv_snapshots"),
+      m_playbackDate(QDate::currentDate().toString("yyyy-MM-dd")) {
 
     m_groups << "All Cameras"
              << "Farm 1"
@@ -26,6 +31,17 @@ Backend::Backend(QObject *parent)
 
     initDefaultCameras();
     loadConfig();
+
+    m_netManager = new QNetworkAccessManager(this);
+    connect(m_netManager, &QNetworkAccessManager::authenticationRequired, this,
+            [this](QNetworkReply *, QAuthenticator *auth) {
+        auth->setUser(m_username);
+        auth->setPassword(m_password);
+    });
+    connect(m_netManager, &QNetworkAccessManager::sslErrors, this,
+            [](QNetworkReply *reply, const QList<QSslError> &) {
+        reply->ignoreSslErrors();
+    });
 
     connect(&m_patrolTimer, &QTimer::timeout, this, &Backend::onPatrolTick);
 
@@ -539,4 +555,344 @@ void Backend::showMessage(const QString &msg) {
 
 void Backend::updateVisibleCameras() {
     emit visibleCamerasChanged();
+}
+
+QString Backend::buildPlaybackRtspUrl(int channel, const QDateTime &start, const QDateTime &end) const {
+    const QString userEncoded = QUrl::toPercentEncoding(m_username);
+    const QString passEncoded = QUrl::toPercentEncoding(m_password);
+    const QString startStr = start.toString("yyyy_MM_dd_hh_mm_ss");
+    const QString endStr = end.toString("yyyy_MM_dd_hh_mm_ss");
+    return QString("rtsp://%1:%2@%3:%4/cam/playback?channel=%5&starttime=%6&endtime=%7")
+        .arg(userEncoded, passEncoded, m_nvrHost)
+        .arg(m_nvrPort)
+        .arg(channel)
+        .arg(startStr, endStr);
+}
+
+void Backend::setActiveMode(const QString &mode) {
+    if (m_activeMode == mode) return;
+    m_activeMode = mode;
+    emit activeModeChanged();
+}
+
+void Backend::setPlaybackChannel(int channel) {
+    if (channel < 1 || channel > 30 || m_playbackChannel == channel) return;
+    m_playbackChannel = channel;
+    emit playbackChannelChanged();
+}
+
+void Backend::setPlaybackDate(const QString &date) {
+    if (m_playbackDate == date) return;
+    m_playbackDate = date;
+    emit playbackDateChanged();
+}
+
+void Backend::setPlaybackStartTime(const QString &time) {
+    if (m_playbackStartTime == time) return;
+    m_playbackStartTime = time;
+    emit playbackTimeChanged();
+}
+
+void Backend::setPlaybackEndTime(const QString &time) {
+    if (m_playbackEndTime == time) return;
+    m_playbackEndTime = time;
+    emit playbackTimeChanged();
+}
+
+QVariantMap Backend::playbackCamera() const {
+    for (const auto &c : m_cameras) {
+        if (c.channel == m_playbackChannel) {
+            QVariantMap m;
+            m["channel"] = c.channel;
+            m["name"] = c.name;
+            m["ip"] = c.ip;
+            m["group"] = c.group;
+            return m;
+        }
+    }
+    return {};
+}
+
+void Backend::enterPlayback(int channel) {
+    if (channel > 0) {
+        m_playbackChannel = channel;
+    }
+    setActiveMode("playback");
+    emit playbackChannelChanged();
+
+    // Default to today and last 2 hours
+    m_playbackDate = QDate::currentDate().toString("yyyy-MM-dd");
+    const QTime now = QTime::currentTime();
+    const QTime twoHoursAgo = now.addSecs(-7200);
+
+    m_playbackStartTime = twoHoursAgo.toString("hh:mm:00");
+    m_playbackEndTime = now.toString("hh:mm:00");
+
+    startPlayback(m_playbackChannel, m_playbackDate, m_playbackStartTime, m_playbackEndTime);
+    queryRecordedClips(m_playbackChannel, m_playbackDate);
+}
+
+void Backend::startPlayback(int channel, const QString &date, const QString &startTime, const QString &endTime) {
+    m_playbackChannel = channel;
+    m_playbackDate = date;
+    m_playbackStartTime = startTime;
+    m_playbackEndTime = endTime;
+
+    const QDateTime startDt = QDateTime::fromString(date + " " + startTime, "yyyy-MM-dd hh:mm:ss");
+    const QDateTime endDt = QDateTime::fromString(date + " " + endTime, "yyyy-MM-dd hh:mm:ss");
+
+    if (startDt.isValid() && endDt.isValid()) {
+        m_playbackUrl = buildPlaybackRtspUrl(channel, startDt, endDt);
+    } else {
+        const QString sClean = QString(date + "_" + startTime).replace("-", "_").replace(":", "_").replace(" ", "_");
+        const QString eClean = QString(date + "_" + endTime).replace("-", "_").replace(":", "_").replace(" ", "_");
+        const QString userEncoded = QUrl::toPercentEncoding(m_username);
+        const QString passEncoded = QUrl::toPercentEncoding(m_password);
+        m_playbackUrl = QString("rtsp://%1:%2@%3:%4/cam/playback?channel=%5&starttime=%6&endtime=%7")
+            .arg(userEncoded, passEncoded, m_nvrHost)
+            .arg(m_nvrPort)
+            .arg(channel)
+            .arg(sClean, eClean);
+    }
+
+    emit playbackChannelChanged();
+    emit playbackDateChanged();
+    emit playbackTimeChanged();
+    emit playbackUrlChanged();
+    showMessage(tr("Loaded playback for Ch %1 (%2 - %3)").arg(channel).arg(startTime).arg(endTime));
+}
+
+void Backend::queryRecordedClips(int channel, const QString &date) {
+    if (m_queryingClips) return;
+    m_queryingClips = true;
+    emit queryingClipsChanged();
+    m_playbackClips.clear();
+    emit playbackClipsChanged();
+
+    doFindFactoryCreate(channel, date);
+}
+
+void Backend::doFindFactoryCreate(int channel, const QString &date) {
+    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=factory.create").arg(m_nvrHost);
+    QNetworkRequest req{QUrl(urlStr)};
+    QNetworkReply *reply = m_netManager->get(req);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, channel, date]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            m_queryingClips = false;
+            emit queryingClipsChanged();
+            showMessage(tr("Failed to connect to NVR for recordings query"));
+            return;
+        }
+
+        const QString text = QString::fromUtf8(reply->readAll());
+        QString objectId;
+        for (const QString &line : text.split('\n')) {
+            if (line.trimmed().startsWith("result=")) {
+                objectId = line.trimmed().mid(7);
+                break;
+            }
+        }
+
+        if (objectId.isEmpty()) {
+            m_queryingClips = false;
+            emit queryingClipsChanged();
+            showMessage(tr("NVR returned invalid finder ID"));
+            return;
+        }
+
+        doFindFile(objectId, channel, date);
+    });
+}
+
+void Backend::doFindFile(const QString &objectId, int channel, const QString &date) {
+    const QString startStr = QUrl::toPercentEncoding(date + " 00:00:00");
+    const QString endStr = QUrl::toPercentEncoding(date + " 23:59:59");
+    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=findFile&object=%2&condition.Channel=%3&condition.StartTime=%4&condition.EndTime=%5&condition.Types[0]=dav")
+        .arg(m_nvrHost, objectId, QString::number(channel), startStr, endStr);
+
+    QNetworkRequest req{QUrl(urlStr)};
+    QNetworkReply *reply = m_netManager->get(req);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, objectId, channel, date]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            doFindDestroy(objectId);
+            m_queryingClips = false;
+            emit queryingClipsChanged();
+            showMessage(tr("Search condition error on NVR"));
+            return;
+        }
+        doFindNextFile(objectId, channel, date);
+    });
+}
+
+void Backend::doFindNextFile(const QString &objectId, int channel, const QString &date) {
+    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=findNextFile&object=%2&count=100")
+        .arg(m_nvrHost, objectId);
+
+    QNetworkRequest req{QUrl(urlStr)};
+    QNetworkReply *reply = m_netManager->get(req);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, objectId, channel, date]() {
+        reply->deleteLater();
+        const QString text = QString::fromUtf8(reply->readAll());
+        parseClipsResponse(text, channel);
+        doFindDestroy(objectId);
+        m_queryingClips = false;
+        emit queryingClipsChanged();
+        emit playbackClipsChanged();
+        showMessage(tr("Found %1 recorded segments on %2").arg(m_playbackClips.size()).arg(date));
+    });
+}
+
+void Backend::doFindDestroy(const QString &objectId) {
+    const QString urlStr = QString("https://%1:443/cgi-bin/mediaFileFind.cgi?action=destroy&object=%2")
+        .arg(m_nvrHost, objectId);
+    QNetworkRequest req{QUrl(urlStr)};
+    QNetworkReply *reply = m_netManager->get(req);
+    connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+}
+
+void Backend::parseClipsResponse(const QString &text, int channel) {
+    m_playbackClips.clear();
+    QMap<int, QVariantMap> items;
+
+    const QStringList lines = text.split('\n', Qt::SkipEmptyParts);
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (!line.startsWith("items[")) continue;
+
+        const int closeBracket = line.indexOf(']');
+        if (closeBracket == -1) continue;
+
+        const int idx = line.mid(6, closeBracket - 6).toInt();
+        const int dot = line.indexOf('.', closeBracket);
+        const int eq = line.indexOf('=', dot);
+        if (dot == -1 || eq == -1) continue;
+
+        const QString key = line.mid(dot + 1, eq - dot - 1);
+        const QString val = line.mid(eq + 1);
+
+        items[idx][key] = val;
+    }
+
+    for (auto it = items.constBegin(); it != items.constEnd(); ++it) {
+        const auto map = it.value();
+        const QString startStr = map.value("StartTime").toString();
+        const QString endStr = map.value("EndTime").toString();
+        const qint64 lengthBytes = map.value("Length").toLongLong();
+        const QString vStream = map.value("VideoStream", "Main").toString();
+
+        if (startStr.isEmpty() || endStr.isEmpty()) continue;
+
+        const QDateTime startDt = QDateTime::fromString(startStr, "yyyy-MM-dd hh:mm:ss");
+        const QDateTime endDt = QDateTime::fromString(endStr, "yyyy-MM-dd hh:mm:ss");
+        const qint64 durationSecs = startDt.isValid() && endDt.isValid() ? startDt.secsTo(endDt) : 0;
+
+        QString durationFormatted;
+        if (durationSecs >= 3600) {
+            durationFormatted = QString("%1h %2m").arg(durationSecs / 3600).arg((durationSecs % 3600) / 60);
+        } else if (durationSecs >= 60) {
+            durationFormatted = QString("%1m %2s").arg(durationSecs / 60).arg(durationSecs % 60);
+        } else {
+            durationFormatted = QString("%1s").arg(durationSecs);
+        }
+
+        const double sizeMb = lengthBytes / (1024.0 * 1024.0);
+
+        QVariantMap clip;
+        clip["startTime"] = startStr;
+        clip["endTime"] = endStr;
+        clip["startTimeDisplay"] = startDt.isValid() ? startDt.toString("hh:mm:ss") : startStr;
+        clip["endTimeDisplay"] = endDt.isValid() ? endDt.toString("hh:mm:ss") : endStr;
+        clip["durationSecs"] = durationSecs;
+        clip["durationStr"] = durationFormatted;
+        clip["sizeMb"] = QString::number(sizeMb, 'f', 1);
+        clip["stream"] = vStream;
+        clip["channel"] = channel;
+
+        if (startDt.isValid() && endDt.isValid()) {
+            clip["playbackUrl"] = buildPlaybackRtspUrl(channel, startDt, endDt);
+        }
+
+        m_playbackClips.append(clip);
+    }
+}
+
+void Backend::openExternalPlaybackMpv(int channel, const QString &date, const QString &startTime, const QString &endTime) {
+    const QDateTime startDt = QDateTime::fromString(date + " " + startTime, "yyyy-MM-dd hh:mm:ss");
+    const QDateTime endDt = QDateTime::fromString(date + " " + endTime, "yyyy-MM-dd hh:mm:ss");
+
+    QString url;
+    if (startDt.isValid() && endDt.isValid()) {
+        url = buildPlaybackRtspUrl(channel, startDt, endDt);
+    } else {
+        const QString sClean = QString(date + "_" + startTime).replace("-", "_").replace(":", "_").replace(" ", "_");
+        const QString eClean = QString(date + "_" + endTime).replace("-", "_").replace(":", "_").replace(" ", "_");
+        const QString userEncoded = QUrl::toPercentEncoding(m_username);
+        const QString passEncoded = QUrl::toPercentEncoding(m_password);
+        url = QString("rtsp://%1:%2@%3:%4/cam/playback?channel=%5&starttime=%6&endtime=%7")
+            .arg(userEncoded, passEncoded, m_nvrHost)
+            .arg(m_nvrPort)
+            .arg(channel)
+            .arg(sClean, eClean);
+    }
+
+    QString camName = QString("Playback: Ch %1").arg(channel);
+    for (const auto &c : m_cameras) {
+        if (c.channel == channel) {
+            camName = QString("Playback: Ch %1 - %2 (%3 %4)").arg(c.channel).arg(c.name, date, startTime);
+            break;
+        }
+    }
+
+    const QStringList args = {
+        "--rtsp-transport=tcp",
+        "--profile=low-latency",
+        "--title=" + camName,
+        url
+    };
+
+    const bool ok = QProcess::startDetached("mpv", args);
+    if (ok) {
+        showMessage(tr("Opened playback in MPV"));
+    } else {
+        showMessage(tr("Failed to start MPV for playback"));
+    }
+}
+
+void Backend::takePlaybackSnapshot(int channel, const QString &date, const QString &time) {
+    QDir().mkpath(m_snapshotDir);
+    const QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
+    const QString fileName = QString("snapshot_playback_ch%1_%2_%3.jpg")
+                                .arg(channel, 2, 10, QChar('0'))
+                                .arg(QString(date + "_" + time).replace("-", "").replace(":", ""), timestamp);
+    const QString filePath = m_snapshotDir + "/" + fileName;
+
+    showMessage(tr("Capturing playback snapshot..."));
+
+    if (m_playbackUrl.isEmpty()) return;
+
+    auto *process = new QProcess(this);
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, process, filePath, channel](int exitCode) {
+        process->deleteLater();
+        if (exitCode == 0 && QFile::exists(filePath)) {
+            showMessage(tr("Playback snapshot saved: %1").arg(QFileInfo(filePath).fileName()));
+        } else {
+            showMessage(tr("Snapshot failed"));
+        }
+    });
+
+    const QStringList args = {
+        "-y",
+        "-rtsp_transport", "tcp",
+        "-i", m_playbackUrl,
+        "-vframes", "1",
+        "-q:v", "2",
+        filePath
+    };
+    process->start("ffmpeg", args);
 }

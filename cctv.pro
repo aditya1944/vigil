@@ -1,4 +1,4 @@
-QT += core gui qml quick quickcontrols2 multimedia dbus concurrent
+QT += core gui qml quick quickcontrols2 multimedia dbus concurrent network
 
 CONFIG += c++17 release
 TARGET = cctv

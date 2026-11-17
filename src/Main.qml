@@ -10,7 +10,7 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 480
     visible: true
-    title: qsTr("CCTV Live Monitor")
+    title: backend.activeMode === "playback" ? qsTr("Vigil — Historical Playback") : qsTr("Vigil — Live Monitor")
     color: "#09090c"
 
     Material.theme: Material.Dark
@@ -29,6 +29,8 @@ ApplicationWindow {
         onActivated: {
             if (win.helpVisible) {
                 win.helpVisible = false
+            } else if (backend.activeMode === "playback") {
+                backend.setActiveMode("live")
             } else if (backend.focusedChannel > 0) {
                 backend.exitFocus()
             }
@@ -83,23 +85,28 @@ ApplicationWindow {
                 onToggleHelp: win.helpVisible = !win.helpVisible
             }
 
-            // Main Content Area (Sidebar + Video View)
-            RowLayout {
+            // Main Content Area
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 0
 
-                // Left Camera List Sidebar
-                Sidebar {
-                    Layout.fillHeight: true
-                    visible: win.sidebarVisible
-                }
+                // Live Stream View (Sidebar + Live Video Grid / Focus)
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: 0
+                    visible: backend.activeMode === "live"
 
-                // Video Grid / Focus Area
-                Item {
-                    id: viewArea
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    // Left Camera List Sidebar
+                    Sidebar {
+                        Layout.fillHeight: true
+                        visible: win.sidebarVisible
+                    }
+
+                    // Video Grid / Focus Area
+                    Item {
+                        id: viewArea
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
 
                     // Focused Single Camera View
                     Item {
@@ -229,6 +236,12 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+
+                // Historical Playback View
+                PlaybackView {
+                    anchors.fill: parent
+                    visible: backend.activeMode === "playback"
                 }
             }
         }

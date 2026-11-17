@@ -286,6 +286,17 @@ Rectangle {
                 ToolTip.text: qsTr("Capture high-resolution still image")
             }
 
+            // Playback button
+            Button {
+                height: 28
+                padding: 4
+                text: qsTr("⏪ Playback")
+                flat: true
+                onClicked: backend.enterPlayback(root.channel)
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Review historical recordings for this camera")
+            }
+
             // Audio Toggle button
             Button {
                 height: 28

@@ -20,13 +20,29 @@ Rectangle {
         anchors.rightMargin: 12
         spacing: 10
 
-        // Sidebar Toggle
-        Button {
-            text: qsTr("☰ Cameras")
-            flat: true
-            onClicked: root.toggleSidebar()
-            ToolTip.visible: hovered
-            ToolTip.text: qsTr("Toggle Camera List (Key: B)")
+        // Mode Switcher: Live vs Playback
+        Row {
+            spacing: 2
+
+            Button {
+                height: 32
+                text: qsTr("● Live")
+                flat: backend.activeMode !== "live"
+                highlighted: backend.activeMode === "live"
+                onClicked: backend.setActiveMode("live")
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Live multi-camera streaming")
+            }
+
+            Button {
+                height: 32
+                text: qsTr("⏪ Playback")
+                flat: backend.activeMode !== "playback"
+                highlighted: backend.activeMode === "playback"
+                onClicked: backend.enterPlayback(backend.focusedChannel > 0 ? backend.focusedChannel : 1)
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Review recorded NVR footage")
+            }
         }
 
         Rectangle {
@@ -35,8 +51,26 @@ Rectangle {
             color: "#2a2a38"
         }
 
-        // Layout presets
+        // Sidebar Toggle (Live mode only)
+        Button {
+            visible: backend.activeMode === "live"
+            text: qsTr("☰ Cameras")
+            flat: true
+            onClicked: root.toggleSidebar()
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("Toggle Camera List (Key: B)")
+        }
+
+        Rectangle {
+            visible: backend.activeMode === "live"
+            width: 1
+            height: 24
+            color: "#2a2a38"
+        }
+
+        // Layout presets (Live mode only)
         Row {
+            visible: backend.activeMode === "live"
             spacing: 4
 
             Button {
@@ -102,10 +136,10 @@ Rectangle {
 
         Item { Layout.fillWidth: true }
 
-        // Pagination (only when multiple pages exist and not in focus mode)
+        // Pagination (only when multiple pages exist and in live mode)
         RowLayout {
             spacing: 4
-            visible: backend.focusedChannel === -1 && backend.totalPages > 1
+            visible: backend.activeMode === "live" && backend.focusedChannel === -1 && backend.totalPages > 1
 
             Button {
                 text: "◀"
@@ -132,13 +166,15 @@ Rectangle {
         }
 
         Rectangle {
+            visible: backend.activeMode === "live"
             width: 1
             height: 24
             color: "#2a2a38"
         }
 
-        // Substream / Mainstream quality toggle
+        // Substream / Mainstream quality toggle (Live mode)
         Button {
+            visible: backend.activeMode === "live"
             text: backend.substreamEnabled ? qsTr("Stream: Sub") : qsTr("Stream: Main")
             flat: true
             onClicked: backend.setSubstreamEnabled(!backend.substreamEnabled)
@@ -146,8 +182,9 @@ Rectangle {
             ToolTip.text: qsTr("Toggle Substream (bandwidth friendly) or Mainstream (HD)")
         }
 
-        // Patrol mode button
+        // Patrol mode button (Live mode)
         Button {
+            visible: backend.activeMode === "live"
             text: backend.patrolActive ? qsTr("⏹ Patrol (%1s)").arg(backend.patrolInterval) : qsTr("▶ Patrol")
             flat: !backend.patrolActive
             highlighted: backend.patrolActive

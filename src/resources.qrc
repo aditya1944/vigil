@@ -2,6 +2,7 @@
     <qresource prefix="/">
         <file alias="Main.qml">Main.qml</file>
         <file alias="CameraTile.qml">CameraTile.qml</file>
+        <file alias="PlaybackView.qml">PlaybackView.qml</file>
         <file alias="Sidebar.qml">Sidebar.qml</file>
         <file alias="Toolbar.qml">Toolbar.qml</file>
         <file alias="HelpOverlay.qml">HelpOverlay.qml</file>

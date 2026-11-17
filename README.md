@@ -34,6 +34,12 @@ Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GN
 - **Intelligent Dual-Stream Architecture**:
   - **Substream (`subtype=1`, 720p/D1)**: Used automatically in multi-camera grid views to conserve network bandwidth and GPU decoding context limits.
   - **Mainstream (`subtype=0`, 1080p Full HD)**: Automatically engaged when focusing on any camera for crystal-clear detail.
+- **Historical Recording Playback**:
+  - Full NVR recording catalog queries via native HTTP Digest API (`mediaFileFind.cgi`).
+  - Interactive timeline scrubber with position tracking, seek slider, and jump controls (`±10s`, `±1m`).
+  - Variable speed playback (`0.5×`, `1×`, `2×`, `4×`).
+  - Visual clip drawer listing recorded segments with file sizes, timestamps, and one-click play.
+  - Seamless toggle between Live monitoring and Historical Playback from toolbar or any camera tile.
 - **Hardware-Accelerated Decoding**: Leverages Intel VAAPI, AMD VAAPI, or NVIDIA NVDEC through Qt 6's FFmpeg multimedia backend for minimal CPU overhead.
 - **Embedded Live Audio with Smart Muting**:
   - Direct PipeWire output for G.711 A-law (`pcm_alaw`) audio streams.
@@ -172,11 +178,17 @@ Vigil includes built-in command-line utilities for shell integration, automated 
 # Print full inventory of configured cameras, channel numbers, IPs, and zones:
 cctv list
 
+# Launch GUI directly in playback mode for Channel 5:
+cctv playback 5
+
 # Capture a high-resolution snapshot from Channel 5 without opening the GUI:
 cctv snapshot 5
 
-# Launch Channel 10 directly in a standalone, low-latency MPV window:
+# Launch live Channel 10 directly in a standalone, low-latency MPV window:
 cctv mpv 10
+
+# Play recorded historical footage in standalone MPV:
+cctv playback-mpv 5 2026-11-17 14:00:00 15:00:00
 
 # Display CLI help:
 cctv --help

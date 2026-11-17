@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h" || arg == "help" ||
-            arg == "list" || arg == "snapshot" || arg == "mpv") {
+            arg == "list" || arg == "snapshot" || arg == "mpv" || arg == "playback-mpv") {
             isCli = true;
             break;
         }
@@ -40,18 +40,22 @@ int main(int argc, char *argv[]) {
     app.setDesktopFileName("cctv");
     app.setWindowIcon(QIcon::fromTheme("cctv"));
 
+    int initialPlaybackChannel = -1;
+
     // Handle CLI arguments
     const QStringList args = app.arguments();
     if (args.size() > 1) {
         const QString cmd = args.at(1);
         if (cmd == "--help" || cmd == "-h" || cmd == "help") {
-            std::cout << "CCTV Live Feed Client\n"
+            std::cout << "Vigil — CCTV Live & Playback Client\n"
                       << "Usage:\n"
-                      << "  cctv                    Launch the live viewer GUI\n"
-                      << "  cctv list               List all configured cameras\n"
-                      << "  cctv snapshot <ch>      Capture snapshot from channel <ch>\n"
-                      << "  cctv mpv <ch>           Open channel in standalone MPV\n"
-                      << "  cctv --help             Show this help message\n";
+                      << "  cctv                               Launch live viewer GUI\n"
+                      << "  cctv playback <ch>                 Launch GUI directly in playback mode for <ch>\n"
+                      << "  cctv list                          List all configured cameras\n"
+                      << "  cctv snapshot <ch>                 Capture snapshot from channel <ch>\n"
+                      << "  cctv mpv <ch>                      Open live channel in standalone MPV\n"
+                      << "  cctv playback-mpv <ch> [date] [s] [e] Open recorded footage in standalone MPV\n"
+                      << "  cctv --help                        Show this help message\n";
             return 0;
         } else if (cmd == "list") {
             Backend b;
@@ -87,6 +91,16 @@ int main(int argc, char *argv[]) {
             Backend b;
             b.openExternalMpv(ch);
             return 0;
+        } else if (cmd == "playback-mpv" && args.size() > 2) {
+            const int ch = args.at(2).toInt();
+            const QString date = (args.size() > 3) ? args.at(3) : QDate::currentDate().toString("yyyy-MM-dd");
+            const QString start = (args.size() > 4) ? args.at(4) : "00:00:00";
+            const QString end = (args.size() > 5) ? args.at(5) : "23:59:59";
+            Backend b;
+            b.openExternalPlaybackMpv(ch, date, start, end);
+            return 0;
+        } else if (cmd == "playback") {
+            initialPlaybackChannel = (args.size() > 2) ? args.at(2).toInt() : 1;
         }
     }
 
@@ -97,6 +111,9 @@ int main(int argc, char *argv[]) {
 
     Theme theme;
     Backend backend;
+    if (initialPlaybackChannel > 0) {
+        backend.enterPlayback(initialPlaybackChannel);
+    }
 
     QQmlApplicationEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);

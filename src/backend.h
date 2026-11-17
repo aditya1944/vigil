@@ -7,6 +7,10 @@
 #include <QVariantMap>
 #include <QTimer>
 #include <QProcess>
+#include <QDateTime>
+#include <QDate>
+#include <QTime>
+#include <QNetworkAccessManager>
 
 struct CameraInfo {
     int channel = 1;
@@ -37,6 +41,17 @@ class Backend : public QObject {
     Q_PROPERTY(bool substreamEnabled READ substreamEnabled WRITE setSubstreamEnabled NOTIFY substreamEnabledChanged)
     Q_PROPERTY(int totalCameraCount READ totalCameraCount NOTIFY camerasChanged)
 
+    // Playback Properties
+    Q_PROPERTY(QString activeMode READ activeMode WRITE setActiveMode NOTIFY activeModeChanged)
+    Q_PROPERTY(int playbackChannel READ playbackChannel WRITE setPlaybackChannel NOTIFY playbackChannelChanged)
+    Q_PROPERTY(QVariantMap playbackCamera READ playbackCamera NOTIFY playbackChannelChanged)
+    Q_PROPERTY(QString playbackDate READ playbackDate WRITE setPlaybackDate NOTIFY playbackDateChanged)
+    Q_PROPERTY(QString playbackStartTime READ playbackStartTime WRITE setPlaybackStartTime NOTIFY playbackTimeChanged)
+    Q_PROPERTY(QString playbackEndTime READ playbackEndTime WRITE setPlaybackEndTime NOTIFY playbackTimeChanged)
+    Q_PROPERTY(QString playbackUrl READ playbackUrl NOTIFY playbackUrlChanged)
+    Q_PROPERTY(QVariantList playbackClips READ playbackClips NOTIFY playbackClipsChanged)
+    Q_PROPERTY(bool queryingClips READ queryingClips NOTIFY queryingClipsChanged)
+
 public:
     explicit Backend(QObject *parent = nullptr);
     ~Backend() override;
@@ -58,6 +73,17 @@ public:
     bool substreamEnabled() const { return m_substreamEnabled; }
     int totalCameraCount() const { return m_cameras.size(); }
 
+    // Playback Getters
+    QString activeMode() const { return m_activeMode; }
+    int playbackChannel() const { return m_playbackChannel; }
+    QVariantMap playbackCamera() const;
+    QString playbackDate() const { return m_playbackDate; }
+    QString playbackStartTime() const { return m_playbackStartTime; }
+    QString playbackEndTime() const { return m_playbackEndTime; }
+    QString playbackUrl() const { return m_playbackUrl; }
+    QVariantList playbackClips() const { return m_playbackClips; }
+    bool queryingClips() const { return m_queryingClips; }
+
     Q_INVOKABLE void setCurrentGroup(const QString &group);
     Q_INVOKABLE void setGridCols(int cols);
     Q_INVOKABLE void setGridRows(int rows);
@@ -78,6 +104,20 @@ public:
     Q_INVOKABLE void primaryAction();
     Q_INVOKABLE void showMessage(const QString &msg);
 
+    // Playback Invocable Methods
+    Q_INVOKABLE void setActiveMode(const QString &mode);
+    Q_INVOKABLE void setPlaybackChannel(int channel);
+    Q_INVOKABLE void setPlaybackDate(const QString &date);
+    Q_INVOKABLE void setPlaybackStartTime(const QString &time);
+    Q_INVOKABLE void setPlaybackEndTime(const QString &time);
+    Q_INVOKABLE void enterPlayback(int channel);
+    Q_INVOKABLE void startPlayback(int channel, const QString &date, const QString &startTime, const QString &endTime);
+    Q_INVOKABLE void queryRecordedClips(int channel, const QString &date);
+    Q_INVOKABLE void openExternalPlaybackMpv(int channel, const QString &date, const QString &startTime, const QString &endTime);
+    Q_INVOKABLE void takePlaybackSnapshot(int channel, const QString &date, const QString &time);
+    Q_INVOKABLE QString buildPlaybackRtspUrl(int channel, const QDateTime &start, const QDateTime &end) const;
+    Q_INVOKABLE void parseClipsResponse(const QString &text, int channel);
+
     // Configuration
     Q_INVOKABLE void loadConfig();
     Q_INVOKABLE void saveConfig();
@@ -97,12 +137,26 @@ signals:
     void searchQueryChanged();
     void substreamEnabledChanged();
 
+    // Playback Signals
+    void activeModeChanged();
+    void playbackChannelChanged();
+    void playbackDateChanged();
+    void playbackTimeChanged();
+    void playbackUrlChanged();
+    void playbackClipsChanged();
+    void queryingClipsChanged();
+
 private:
     void initDefaultCameras();
     QList<CameraInfo> filteredCameras() const;
     void updateVisibleCameras();
     void onPatrolTick();
     QString buildRtspUrl(int channel, int subtype) const;
+
+    void doFindFactoryCreate(int channel, const QString &date);
+    void doFindFile(const QString &objectId, int channel, const QString &date);
+    void doFindNextFile(const QString &objectId, int channel, const QString &date);
+    void doFindDestroy(const QString &objectId);
 
     QString m_nvrHost = "192.168.1.245";
     int m_nvrPort = 554;
@@ -126,4 +180,15 @@ private:
     int m_patrolInterval = 8;
     QString m_statusMessage;
     QTimer m_statusClearTimer;
+
+    // Playback Members
+    QNetworkAccessManager *m_netManager = nullptr;
+    QString m_activeMode = "live";
+    int m_playbackChannel = 1;
+    QString m_playbackDate;
+    QString m_playbackStartTime = "00:00:00";
+    QString m_playbackEndTime = "23:59:59";
+    QString m_playbackUrl;
+    QVariantList m_playbackClips;
+    bool m_queryingClips = false;
 };

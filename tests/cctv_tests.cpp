@@ -111,6 +111,55 @@ private slots:
         QCOMPARE(translator.language(), QString("en"));
         QVERIFY(translator.translate("Main", "Save").isNull());
     }
+
+    void backendPlaybackUrlConstruction()
+    {
+        Backend b;
+        const QDateTime start = QDateTime::fromString("2026-11-17 14:00:00", "yyyy-MM-dd hh:mm:ss");
+        const QDateTime end = QDateTime::fromString("2026-11-17 15:00:00", "yyyy-MM-dd hh:mm:ss");
+        const QString url = b.buildPlaybackRtspUrl(5, start, end);
+        QVERIFY(url.contains("/cam/playback?channel=5"));
+        QVERIFY(url.contains("starttime=2026_11_17_14_00_00"));
+        QVERIFY(url.contains("endtime=2026_11_17_15_00_00"));
+    }
+
+    void backendActiveModeSwitching()
+    {
+        Backend b;
+        QCOMPARE(b.activeMode(), QString("live"));
+        b.setActiveMode("playback");
+        QCOMPARE(b.activeMode(), QString("playback"));
+        b.enterPlayback(10);
+        QCOMPARE(b.playbackChannel(), 10);
+        QCOMPARE(b.playbackCamera().value("name").toString(), QString("Farm-2 inside right"));
+        QVERIFY(!b.playbackUrl().isEmpty());
+    }
+
+    void backendPlaybackClipParsing()
+    {
+        Backend b;
+        const QString sampleNvrResponse =
+            "found=2\n"
+            "items[0].Channel=4\n"
+            "items[0].StartTime=2026-11-17 12:00:00\n"
+            "items[0].EndTime=2026-11-17 13:00:00\n"
+            "items[0].Length=104857600\n"
+            "items[0].VideoStream=Main\n"
+            "items[1].Channel=4\n"
+            "items[1].StartTime=2026-11-17 13:00:00\n"
+            "items[1].EndTime=2026-11-17 14:00:00\n"
+            "items[1].Length=209715200\n"
+            "items[1].VideoStream=Main\n";
+
+        b.parseClipsResponse(sampleNvrResponse, 5);
+        QCOMPARE(b.playbackClips().size(), 2);
+        const auto first = b.playbackClips().first().toMap();
+        QCOMPARE(first.value("startTime").toString(), QString("2026-11-17 12:00:00"));
+        QCOMPARE(first.value("endTime").toString(), QString("2026-11-17 13:00:00"));
+        QCOMPARE(first.value("durationStr").toString(), QString("1h 0m"));
+        QCOMPARE(first.value("sizeMb").toString(), QString("100.0"));
+        QVERIFY(first.value("playbackUrl").toString().contains("channel=5"));
+    }
 };
 
 QTEST_MAIN(CctvTests)
