@@ -122,15 +122,15 @@ Rectangle {
             }
 
             Button {
-                text: qsTr("All (5×6)")
-                flat: !(backend.gridCols === 5 && backend.gridRows === 6 && backend.focusedChannel === -1)
-                highlighted: (backend.gridCols === 5 && backend.gridRows === 6 && backend.focusedChannel === -1)
+                text: qsTr("All (%1×%2)").arg(backend.allGridCols).arg(backend.allGridRows)
+                flat: !(backend.gridCols === backend.allGridCols && backend.gridRows === backend.allGridRows && backend.focusedChannel === -1)
+                highlighted: (backend.gridCols === backend.allGridCols && backend.gridRows === backend.allGridRows && backend.focusedChannel === -1)
                 onClicked: {
                     backend.exitFocus()
-                    backend.setGridDimensions(5, 6)
+                    backend.setAllCamerasGrid()
                 }
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("All 30 Cameras Grid (Key: 5)")
+                ToolTip.text: qsTr("All %1 Cameras Grid (Key: 5)").arg(backend.totalCameraCount)
             }
         }
 

@@ -40,6 +40,13 @@ class Backend : public QObject {
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(bool substreamEnabled READ substreamEnabled WRITE setSubstreamEnabled NOTIFY substreamEnabledChanged)
     Q_PROPERTY(int totalCameraCount READ totalCameraCount NOTIFY camerasChanged)
+    Q_PROPERTY(int allGridCols READ allGridCols NOTIFY camerasChanged)
+    Q_PROPERTY(int allGridRows READ allGridRows NOTIFY camerasChanged)
+    Q_PROPERTY(QString nvrHost READ nvrHost WRITE setNvrHost NOTIFY nvrConfigChanged)
+    Q_PROPERTY(int nvrPort READ nvrPort WRITE setNvrPort NOTIFY nvrConfigChanged)
+    Q_PROPERTY(QString username READ username WRITE setUsername NOTIFY nvrConfigChanged)
+    Q_PROPERTY(QString password READ password WRITE setPassword NOTIFY nvrConfigChanged)
+    Q_PROPERTY(bool discoveringCameras READ discoveringCameras NOTIFY discoveringCamerasChanged)
 
     // Playback Properties
     Q_PROPERTY(QString activeMode READ activeMode WRITE setActiveMode NOTIFY activeModeChanged)
@@ -78,8 +85,18 @@ public:
     QString searchQuery() const { return m_searchQuery; }
     bool substreamEnabled() const { return m_substreamEnabled; }
     int totalCameraCount() const { return m_cameras.size(); }
+    int allGridCols() const;
+    int allGridRows() const;
     QString nvrHost() const { return m_nvrHost; }
+    void setNvrHost(const QString &host);
+    int nvrPort() const { return m_nvrPort; }
+    void setNvrPort(int port);
+    QString username() const { return m_username; }
+    void setUsername(const QString &user);
+    QString password() const { return m_password; }
+    void setPassword(const QString &pass);
     bool fetchingCameraNames() const { return m_fetchingCameraNames; }
+    bool discoveringCameras() const { return m_discoveringCameras; }
 
     // Playback Getters
     QString activeMode() const { return m_activeMode; }
@@ -101,6 +118,7 @@ public:
     Q_INVOKABLE void setGridCols(int cols);
     Q_INVOKABLE void setGridRows(int rows);
     Q_INVOKABLE void setGridDimensions(int cols, int rows);
+    Q_INVOKABLE void setAllCamerasGrid();
     Q_INVOKABLE void setPageIndex(int index);
     Q_INVOKABLE void nextPage();
     Q_INVOKABLE void prevPage();
@@ -116,6 +134,7 @@ public:
     Q_INVOKABLE void cycleGrid();
     Q_INVOKABLE void primaryAction();
     Q_INVOKABLE void showMessage(const QString &msg);
+    Q_INVOKABLE QString buildRtspUrl(int channel, int subtype) const;
 
     // Playback Invocable Methods
     Q_INVOKABLE void setActiveMode(const QString &mode);
@@ -136,10 +155,14 @@ public:
     Q_INVOKABLE QString buildPlaybackRtspUrl(int channel, const QDateTime &start, const QDateTime &end) const;
     Q_INVOKABLE void parseClipsResponse(const QString &text, int channel);
 
-    // Configuration & NVR Sync
+    // Configuration & Dynamic NVR Discovery
     Q_INVOKABLE void loadConfig();
     Q_INVOKABLE void saveConfig();
+    Q_INVOKABLE void setNvrConnection(const QString &host, int port, const QString &user, const QString &pass);
+    Q_INVOKABLE void fetchCamerasFromNvr();
     Q_INVOKABLE void fetchCameraNamesFromNvr();
+    Q_INVOKABLE QList<QVariantMap> parseRemoteDevicesAndTitles(const QString &remoteDevText, const QString &channelTitleText) const;
+    Q_INVOKABLE void applyDiscoveredCameras(const QList<QVariantMap> &cams);
     Q_INVOKABLE QMap<int, QString> parseChannelTitlesResponse(const QString &text) const;
     Q_INVOKABLE QString inferGroupFromName(const QString &name) const;
     Q_INVOKABLE void applyCameraNames(const QMap<int, QString> &names);
@@ -159,6 +182,8 @@ signals:
     void searchQueryChanged();
     void substreamEnabledChanged();
     void fetchingCameraNamesChanged();
+    void discoveringCamerasChanged();
+    void nvrConfigChanged();
 
     // Playback Signals
     void activeModeChanged();
@@ -178,7 +203,6 @@ private:
     QList<CameraInfo> filteredCameras() const;
     void updateVisibleCameras();
     void onPatrolTick();
-    QString buildRtspUrl(int channel, int subtype) const;
 
     void doFindFactoryCreate(int channel, const QString &date);
     void doFindFile(const QString &objectId, int channel, const QString &date);
@@ -226,4 +250,5 @@ private:
     bool m_queryingDates = false;
     QMap<int, QStringList> m_cachedAvailableDates;
     bool m_fetchingCameraNames = false;
+    bool m_discoveringCameras = false;
 };

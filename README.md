@@ -19,18 +19,22 @@
 
 **Vigil** is a high-performance Linux desktop client designed specifically for monitoring live RTSP CCTV camera feeds from on-premises Network Video Recorders (NVRs) such as Dahua, CP PLUS, and standard ONVIF-compliant equipment.
 
-Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GNOME Wayland), Vigil delivers smooth 60 FPS UI rendering, low-latency live video streaming via hardware-accelerated FFmpeg decoding, PipeWire-integrated live audio, and flexible multi-camera layouts ranging from single-camera inspection to 30-channel overview grids.
+Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GNOME Wayland), Vigil delivers smooth 60 FPS UI rendering, low-latency live video streaming via hardware-accelerated FFmpeg decoding, PipeWire-integrated live audio, and flexible multi-camera layouts ranging from single-camera inspection to all-channel overview grids.
 
 ---
 
 ## Key Highlights
 
+- **Universal & Generic Camera Setup (Zero Hardcoding)**:
+  - **Dynamic NVR Discovery**: Automatically queries the NVR upon connection (`RemoteDevice` and `ChannelTitle` APIs) to discover active cameras, camera names, and actual camera IP addresses.
+  - **Arbitrary Camera Count**: Effortlessly handles 4, 8, 16, 32, or 64 camera setups. The grid adapts automatically without assuming a fixed number of cameras.
+  - **Flexible NVR Configuration**: Connect to any NVR on your network via GUI settings dialog (⚙), config file, CLI options (`--nvr`), or environment variables (`CCTV_NVR_HOST`).
 - **Dynamic Multi-Camera Grids**: Effortlessly toggle between layout presets:
   - `1×1`: Single full-window inspection view.
   - `2×2`: 4 concurrent camera streams with paging.
   - `3×3`: 9 concurrent camera streams.
   - `4×4`: 16 concurrent camera streams.
-  - `5×6`: All 30 channels displayed simultaneously.
+  - `All`: Automatically calculates the optimal layout (e.g. `2×2`, `3×3`, `4×4`, `5×6`) to fit all cameras on screen simultaneously.
 - **Intelligent Dual-Stream Architecture**:
   - **Substream (`subtype=1`, 720p/D1)**: Used automatically in multi-camera grid views to conserve network bandwidth and GPU decoding context limits.
   - **Mainstream (`subtype=0`, 1080p Full HD)**: Automatically engaged when focusing on any camera for crystal-clear detail.
@@ -198,7 +202,10 @@ Vigil includes built-in command-line utilities for shell integration, automated 
 # Print full inventory of configured cameras, channel numbers, IPs, and zones:
 cctv list
 
-# Query NVR and synchronize camera names and zones into local cache:
+# Connect to any NVR and auto-discover all cameras and IPs:
+cctv setup 192.168.1.245 554 admin Admin@123
+
+# Query connected NVR and synchronize camera names and zones into local cache:
 cctv sync-names
 
 # Launch GUI directly in playback mode for Channel 5:

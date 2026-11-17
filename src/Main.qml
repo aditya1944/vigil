@@ -51,7 +51,7 @@ ApplicationWindow {
     Shortcut { sequence: "2"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(2, 2); } }
     Shortcut { sequence: "3"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(3, 3); } }
     Shortcut { sequence: "4"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(4, 4); } }
-    Shortcut { sequence: "5"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setGridDimensions(5, 6); } }
+    Shortcut { sequence: "5"; context: Qt.ApplicationShortcut; onActivated: { backend.exitFocus(); backend.setAllCamerasGrid(); } }
     Shortcut {
         sequence: "Left"
         context: Qt.ApplicationShortcut

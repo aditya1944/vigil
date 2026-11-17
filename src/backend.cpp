@@ -59,8 +59,8 @@ Backend::Backend(QObject *parent)
         emit statusMessageChanged();
     });
 
-    // Asynchronously synchronize live camera names from NVR
-    QTimer::singleShot(250, this, &Backend::fetchCameraNamesFromNvr);
+    // Asynchronously synchronize live cameras & names from NVR
+    QTimer::singleShot(250, this, &Backend::fetchCamerasFromNvr);
 }
 
 Backend::~Backend() {
@@ -150,32 +150,42 @@ void Backend::loadConfig() {
     }
 
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
-    m_nvrHost = root.value("nvrHost").toString(m_nvrHost);
-    m_nvrPort = root.value("nvrPort").toInt(m_nvrPort);
-    m_username = root.value("username").toString(m_username);
-    m_password = root.value("password").toString(m_password);
+    m_nvrHost = qEnvironmentVariable("CCTV_NVR_HOST", root.value("nvrHost").toString(m_nvrHost));
+    const QString envPort = qEnvironmentVariable("CCTV_NVR_PORT");
+    m_nvrPort = !envPort.isEmpty() ? envPort.toInt() : root.value("nvrPort").toInt(m_nvrPort);
+    m_username = qEnvironmentVariable("CCTV_NVR_USER", root.value("username").toString(m_username));
+    m_password = qEnvironmentVariable("CCTV_NVR_PASS", root.value("password").toString(m_password));
     m_snapshotDir = root.value("snapshotDir").toString(m_snapshotDir);
     m_gridCols = root.value("gridCols").toInt(m_gridCols);
     m_gridRows = root.value("gridRows").toInt(m_gridRows);
     m_patrolInterval = root.value("patrolInterval").toInt(m_patrolInterval);
 
-    // Load cached camera names and groups if present
-    if (root.contains("cameras") && root["cameras"].isArray()) {
+    // Load cached cameras if present
+    if (root.contains("cameras") && root["cameras"].isArray() && !root["cameras"].toArray().isEmpty()) {
         const QJsonArray camArray = root["cameras"].toArray();
+        QList<CameraInfo> loadedCams;
+        QSet<QString> groupSet;
+        groupSet.insert("All Cameras");
         for (const auto &v : camArray) {
             const QJsonObject o = v.toObject();
-            const int ch = o.value("channel").toInt();
-            const QString name = o.value("name").toString();
-            const QString group = o.value("group").toString();
-            const QString ip = o.value("ip").toString();
-            for (auto &cam : m_cameras) {
-                if (cam.channel == ch) {
-                    if (!name.isEmpty()) cam.name = name;
-                    if (!group.isEmpty()) cam.group = group;
-                    if (!ip.isEmpty()) cam.ip = ip;
-                    break;
-                }
+            CameraInfo cam;
+            cam.channel = o.value("channel").toInt();
+            cam.name = o.value("name").toString();
+            cam.group = o.value("group").toString();
+            cam.ip = o.value("ip").toString();
+            cam.mainUrl = buildRtspUrl(cam.channel, 0);
+            cam.subUrl = buildRtspUrl(cam.channel, 1);
+            if (cam.channel > 0 && !cam.name.isEmpty()) {
+                loadedCams.append(cam);
+                if (!cam.group.isEmpty()) groupSet.insert(cam.group);
             }
+        }
+        if (!loadedCams.isEmpty()) {
+            m_cameras = loadedCams;
+            m_groups = groupSet.values();
+            std::sort(m_groups.begin(), m_groups.end());
+            m_groups.removeAll("All Cameras");
+            m_groups.prepend("All Cameras");
         }
     }
 
@@ -320,7 +330,7 @@ void Backend::setCurrentGroup(const QString &group) {
 }
 
 void Backend::setGridCols(int cols) {
-    if (cols < 1 || cols > 6 || m_gridCols == cols)
+    if (cols < 1 || cols > 12 || m_gridCols == cols)
         return;
     m_gridCols = cols;
     emit gridDimensionsChanged();
@@ -329,7 +339,7 @@ void Backend::setGridCols(int cols) {
 }
 
 void Backend::setGridRows(int rows) {
-    if (rows < 1 || rows > 6 || m_gridRows == rows)
+    if (rows < 1 || rows > 12 || m_gridRows == rows)
         return;
     m_gridRows = rows;
     emit gridDimensionsChanged();
@@ -338,7 +348,7 @@ void Backend::setGridRows(int rows) {
 }
 
 void Backend::setGridDimensions(int cols, int rows) {
-    if (cols < 1 || cols > 6 || rows < 1 || rows > 6)
+    if (cols < 1 || cols > 12 || rows < 1 || rows > 12)
         return;
 
     int targetCamIndex = 0;
@@ -560,6 +570,35 @@ void Backend::openExternalMpv(int channel) {
     }
 }
 
+int Backend::allGridCols() const {
+    const int count = m_cameras.size();
+    if (count <= 1) return 1;
+    if (count <= 4) return 2;
+    if (count <= 9) return 3;
+    if (count <= 16) return 4;
+    if (count <= 25) return 5;
+    if (count <= 30) return 5;
+    if (count <= 36) return 6;
+    if (count <= 49) return 7;
+    return std::max(1, static_cast<int>(std::ceil(std::sqrt(count))));
+}
+
+int Backend::allGridRows() const {
+    const int count = m_cameras.size();
+    if (count <= 1) return 1;
+    if (count <= 4) return 2;
+    if (count <= 9) return 3;
+    if (count <= 16) return 4;
+    if (count <= 25) return 5;
+    if (count <= 30) return 6;
+    const int cols = allGridCols();
+    return std::max(1, static_cast<int>(std::ceil(static_cast<double>(count) / cols)));
+}
+
+void Backend::setAllCamerasGrid() {
+    setGridDimensions(allGridCols(), allGridRows());
+}
+
 void Backend::cycleGrid() {
     if (m_focusedChannel > 0) {
         exitFocus();
@@ -573,7 +612,7 @@ void Backend::cycleGrid() {
     } else if (m_gridCols == 3 && m_gridRows == 3) {
         setGridDimensions(4, 4);
     } else if (m_gridCols == 4 && m_gridRows == 4) {
-        setGridDimensions(5, 6); // All 30!
+        setAllCamerasGrid();
     } else {
         setGridDimensions(2, 2);
     }
@@ -616,7 +655,7 @@ void Backend::setActiveMode(const QString &mode) {
 }
 
 void Backend::setPlaybackChannel(int channel) {
-    if (channel < 1 || channel > 30) return;
+    if (channel < 1 || channel > m_cameras.size()) return;
     if (m_playbackChannel == channel && !m_playbackUrl.isEmpty()) return;
     m_playbackChannel = channel;
     emit playbackChannelChanged();
@@ -997,7 +1036,7 @@ void Backend::saveRecording(int channel, const QString &date, const QString &sta
         return;
     }
 
-    if (channel < 1 || channel > 30) {
+    if (channel < 1 || channel > m_cameras.size()) {
         showMessage(tr("Invalid channel for recording: %1").arg(channel));
         return;
     }
@@ -1119,7 +1158,7 @@ QStringList Backend::parseDatesResponse(const QString &text) const {
 }
 
 void Backend::queryAvailableRecordingDates(int channel) {
-    if (channel < 1 || channel > 30) return;
+    if (channel < 1 || channel > m_cameras.size()) return;
 
     if (m_cachedAvailableDates.contains(channel) && !m_cachedAvailableDates[channel].isEmpty()) {
         m_availableDates = m_cachedAvailableDates[channel];
@@ -1318,28 +1357,189 @@ void Backend::applyCameraNames(const QMap<int, QString> &names) {
     }
 }
 
-void Backend::fetchCameraNamesFromNvr() {
-    if (m_fetchingCameraNames) return;
+void Backend::setNvrHost(const QString &host) {
+    if (host.trimmed().isEmpty() || m_nvrHost == host.trimmed()) return;
+    m_nvrHost = host.trimmed();
+    emit nvrConfigChanged();
+    for (auto &cam : m_cameras) {
+        cam.mainUrl = buildRtspUrl(cam.channel, 0);
+        cam.subUrl = buildRtspUrl(cam.channel, 1);
+    }
+}
 
+void Backend::setNvrPort(int port) {
+    if (port <= 0 || m_nvrPort == port) return;
+    m_nvrPort = port;
+    emit nvrConfigChanged();
+    for (auto &cam : m_cameras) {
+        cam.mainUrl = buildRtspUrl(cam.channel, 0);
+        cam.subUrl = buildRtspUrl(cam.channel, 1);
+    }
+}
+
+void Backend::setUsername(const QString &user) {
+    if (user.trimmed().isEmpty() || m_username == user.trimmed()) return;
+    m_username = user.trimmed();
+    emit nvrConfigChanged();
+}
+
+void Backend::setPassword(const QString &pass) {
+    if (m_password == pass) return;
+    m_password = pass;
+    emit nvrConfigChanged();
+}
+
+void Backend::setNvrConnection(const QString &host, int port, const QString &user, const QString &pass) {
+    if (host.trimmed().isEmpty()) return;
+    m_nvrHost = host.trimmed();
+    m_nvrPort = (port > 0) ? port : 554;
+    if (!user.trimmed().isEmpty()) m_username = user.trimmed();
+    if (!pass.isEmpty()) m_password = pass;
+
+    emit nvrConfigChanged();
+
+    for (auto &cam : m_cameras) {
+        cam.mainUrl = buildRtspUrl(cam.channel, 0);
+        cam.subUrl = buildRtspUrl(cam.channel, 1);
+    }
+
+    saveConfig();
+    fetchCamerasFromNvr();
+}
+
+QList<QVariantMap> Backend::parseRemoteDevicesAndTitles(const QString &remoteDevText, const QString &channelTitleText) const {
+    const auto channelTitles = parseChannelTitlesResponse(channelTitleText);
+
+    struct RawDev {
+        int ch = 0;
+        QString ip;
+        bool enable = false;
+        QString name;
+    };
+    QMap<int, RawDev> devs;
+
+    const QStringList lines = remoteDevText.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+    const QRegularExpression reDev(".*(?:NETCAMERA_INFO_|info_)(\\d+)\\.(Address|Enable|VideoInputs\\[0\\]\\.Name)=(.*)");
+    for (const QString &line : lines) {
+        const auto m = reDev.match(line);
+        if (m.hasMatch()) {
+            const int ch = m.captured(1).toInt() + 1;
+            const QString key = m.captured(2);
+            const QString val = m.captured(3).trimmed();
+            if (!devs.contains(ch)) {
+                RawDev d;
+                d.ch = ch;
+                devs.insert(ch, d);
+            }
+            if (key == "Address") devs[ch].ip = val;
+            else if (key == "Enable") devs[ch].enable = (val.compare("true", Qt::CaseInsensitive) == 0);
+            else if (key.contains("Name")) devs[ch].name = val;
+        }
+    }
+
+    QList<QVariantMap> discovered;
+
+    // Active IP cameras from RemoteDevice
+    for (auto it = devs.constBegin(); it != devs.constEnd(); ++it) {
+        const auto &d = it.value();
+        if (d.enable && !d.ip.isEmpty() && d.ip != "192.168.0.0" && d.ip != "0.0.0.0") {
+            QVariantMap cam;
+            cam["channel"] = d.ch;
+            QString finalName = channelTitles.value(d.ch);
+            if (finalName.isEmpty()) finalName = d.name;
+            if (finalName.isEmpty()) finalName = QString("Camera %1").arg(d.ch);
+            cam["name"] = finalName;
+            cam["ip"] = d.ip;
+            cam["group"] = inferGroupFromName(finalName);
+            discovered.append(cam);
+        }
+    }
+
+    // Fallback if RemoteDevice was empty (e.g. analog DVR / local channels)
+    if (discovered.isEmpty() && !channelTitles.isEmpty()) {
+        for (auto it = channelTitles.constBegin(); it != channelTitles.constEnd(); ++it) {
+            const int ch = it.key();
+            const QString name = it.value();
+            if (!name.isEmpty()) {
+                QVariantMap cam;
+                cam["channel"] = ch;
+                cam["name"] = name;
+                cam["ip"] = m_nvrHost;
+                cam["group"] = inferGroupFromName(name);
+                discovered.append(cam);
+            }
+        }
+    }
+
+    std::sort(discovered.begin(), discovered.end(), [](const QVariantMap &a, const QVariantMap &b) {
+        return a.value("channel").toInt() < b.value("channel").toInt();
+    });
+
+    return discovered;
+}
+
+void Backend::applyDiscoveredCameras(const QList<QVariantMap> &cams) {
+    if (cams.isEmpty()) return;
+
+    m_cameras.clear();
+    QSet<QString> groupSet;
+    groupSet.insert("All Cameras");
+
+    for (const auto &v : cams) {
+        CameraInfo cam;
+        cam.channel = v.value("channel").toInt();
+        cam.name = v.value("name").toString();
+        cam.ip = v.value("ip").toString();
+        cam.group = v.value("group").toString();
+        if (cam.group.isEmpty()) cam.group = inferGroupFromName(cam.name);
+        cam.mainUrl = buildRtspUrl(cam.channel, 0);
+        cam.subUrl = buildRtspUrl(cam.channel, 1);
+        m_cameras.append(cam);
+        if (!cam.group.isEmpty()) groupSet.insert(cam.group);
+    }
+
+    std::sort(m_cameras.begin(), m_cameras.end(), [](const CameraInfo &a, const CameraInfo &b) {
+        return a.channel < b.channel;
+    });
+
+    m_groups = groupSet.values();
+    std::sort(m_groups.begin(), m_groups.end());
+    m_groups.removeAll("All Cameras");
+    m_groups.prepend("All Cameras");
+
+    saveConfig();
+    emit camerasChanged();
+    emit visibleCamerasChanged();
+    emit groupsChanged();
+    emit playbackChannelChanged();
+}
+
+void Backend::fetchCamerasFromNvr() {
+    if (m_discoveringCameras) return;
+
+    m_discoveringCameras = true;
     m_fetchingCameraNames = true;
+    emit discoveringCamerasChanged();
     emit fetchingCameraNamesChanged();
 
     const QString host = m_nvrHost;
-    const int port = m_nvrPort == 554 ? 443 : m_nvrPort;
+    const int port = (m_nvrPort == 554) ? 443 : m_nvrPort;
     const QString user = m_username;
     const QString pass = m_password;
 
     QPointer<Backend> self(this);
 
     QThreadPool::globalInstance()->start([self, host, port, user, pass]() {
-        const QString url = QString("https://%1:%2/cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle")
+        const QString url = QString("https://%1:%2/cgi-bin/configManager.cgi?action=getConfig&name=RemoteDevice&name=ChannelTitle")
                                 .arg(host).arg(port);
         QProcess proc;
         proc.start("curl", {"-k", "-s", "--digest", "-u", user + ":" + pass, url});
         if (!proc.waitForFinished(10000)) {
             if (self) {
                 QMetaObject::invokeMethod(self, [self]() {
+                    self->m_discoveringCameras = false;
                     self->m_fetchingCameraNames = false;
+                    emit self->discoveringCamerasChanged();
                     emit self->fetchingCameraNamesChanged();
                 });
             }
@@ -1349,14 +1549,28 @@ void Backend::fetchCameraNamesFromNvr() {
         const QString output = QString::fromUtf8(proc.readAllStandardOutput());
         if (self) {
             QMetaObject::invokeMethod(self, [self, output]() {
+                self->m_discoveringCameras = false;
                 self->m_fetchingCameraNames = false;
+                emit self->discoveringCamerasChanged();
                 emit self->fetchingCameraNamesChanged();
-                const auto names = self->parseChannelTitlesResponse(output);
-                if (!names.isEmpty()) {
-                    self->applyCameraNames(names);
-                    self->showMessage(tr("Synchronized %1 camera names from NVR").arg(names.size()));
+
+                const auto discovered = self->parseRemoteDevicesAndTitles(output, output);
+                if (!discovered.isEmpty()) {
+                    self->applyDiscoveredCameras(discovered);
+                    self->showMessage(tr("Discovered %1 cameras from NVR (%2)").arg(discovered.size()).arg(self->m_nvrHost));
+                } else {
+                    // Fallback to title parsing only
+                    const auto names = self->parseChannelTitlesResponse(output);
+                    if (!names.isEmpty()) {
+                        self->applyCameraNames(names);
+                        self->showMessage(tr("Synced %1 camera names from NVR").arg(names.size()));
+                    }
                 }
             });
         }
     });
+}
+
+void Backend::fetchCameraNamesFromNvr() {
+    fetchCamerasFromNvr();
 }

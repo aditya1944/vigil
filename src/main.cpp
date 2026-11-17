@@ -26,14 +26,21 @@ int main(int argc, char *argv[]) {
     // Prefer Intel VA-API driver directly for hardware video acceleration
     qputenv("LIBVA_DRIVER_NAME", "iHD");
 
-    // Check for CLI subcommands before QGuiApplication initializes the display connection
+    // Check for CLI subcommands and connection overrides before QGuiApplication initializes
     bool isCli = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--help" || arg == "-h" || arg == "help" ||
-            arg == "list" || arg == "sync-names" || arg == "snapshot" || arg == "mpv" || arg == "playback-mpv" || arg == "query-clips") {
+        if (arg == "--nvr" && i + 1 < argc) {
+            qputenv("CCTV_NVR_HOST", argv[++i]);
+        } else if (arg == "--port" && i + 1 < argc) {
+            qputenv("CCTV_NVR_PORT", argv[++i]);
+        } else if (arg == "--user" && i + 1 < argc) {
+            qputenv("CCTV_NVR_USER", argv[++i]);
+        } else if (arg == "--password" && i + 1 < argc) {
+            qputenv("CCTV_NVR_PASS", argv[++i]);
+        } else if (arg == "--help" || arg == "-h" || arg == "help" ||
+            arg == "list" || arg == "setup" || arg == "sync-names" || arg == "snapshot" || arg == "mpv" || arg == "playback-mpv" || arg == "query-clips") {
             isCli = true;
-            break;
         }
     }
 
@@ -58,6 +65,7 @@ int main(int argc, char *argv[]) {
             std::cout << "Vigil — CCTV Live & Playback Client\n"
                       << "Usage:\n"
                       << "  cctv                               Launch live viewer GUI\n"
+                      << "  cctv setup <host> [port] [u] [p]   Configure NVR connection & discover cameras\n"
                       << "  cctv playback <ch>                 Launch GUI directly in playback mode for <ch>\n"
                       << "  cctv list                          List all configured cameras\n"
                       << "  cctv sync-names                    Query NVR and update local camera cache\n"
@@ -65,6 +73,30 @@ int main(int argc, char *argv[]) {
                       << "  cctv mpv <ch>                      Open live channel in standalone MPV\n"
                       << "  cctv playback-mpv <ch> [date] [s] [e] Open recorded footage in standalone MPV\n"
                       << "  cctv --help                        Show this help message\n";
+            return 0;
+        } else if (cmd == "setup" && args.size() > 2) {
+            Backend b;
+            const QString host = args.at(2);
+            const int port = (args.size() > 3) ? args.at(3).toInt() : 554;
+            const QString user = (args.size() > 4) ? args.at(4) : "admin";
+            const QString pass = (args.size() > 5) ? args.at(5) : "admin";
+            std::cout << "Connecting to NVR " << host.toStdString() << ":" << port << " as " << user.toStdString() << "...\n";
+            b.setNvrConnection(host, port, user, pass);
+            QEventLoop loop;
+            QObject::connect(&b, &Backend::discoveringCamerasChanged, [&b, &loop]() {
+                if (!b.discoveringCameras()) loop.quit();
+            });
+            QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+            loop.exec();
+            const auto cams = b.cameras();
+            std::cout << "Successfully configured & discovered " << cams.size() << " cameras from " << host.toStdString() << ":\n";
+            for (const auto &v : cams) {
+                const auto m = v.toMap();
+                std::cout << "  Ch " << m.value("channel").toInt()
+                          << "\t[" << m.value("group").toString().toStdString() << "]\t"
+                          << m.value("name").toString().toStdString()
+                          << " (" << m.value("ip").toString().toStdString() << ")\n";
+            }
             return 0;
         } else if (cmd == "sync-names") {
             Backend b;
@@ -101,7 +133,7 @@ int main(int argc, char *argv[]) {
         } else if (cmd == "snapshot" && args.size() > 2) {
             const int ch = args.at(2).toInt();
             Backend b;
-            const QString url = QString("rtsp://admin:Admin%40123@192.168.1.245:554/cam/realmonitor?channel=%1&subtype=0").arg(ch);
+            const QString url = b.buildRtspUrl(ch, 0);
             const QString outDir = QDir::homePath() + "/cctv_snapshots";
             QDir().mkpath(outDir);
             const QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");

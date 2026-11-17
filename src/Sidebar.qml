@@ -223,10 +223,21 @@ Rectangle {
                 anchors.margins: 6
 
                 Text {
-                    text: qsTr("NVR: 192.168.1.245:554")
+                    text: qsTr("NVR: %1:%2").arg(backend.nvrHost).arg(backend.nvrPort)
                     color: "#9ca3af"
                     font.pixelSize: 11
                     Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                Button {
+                    implicitWidth: 24
+                    implicitHeight: 24
+                    flat: true
+                    text: "⚙"
+                    onClicked: nvrDialog.open()
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Configure NVR connection")
                 }
 
                 Text {
@@ -236,6 +247,56 @@ Rectangle {
                     font.bold: true
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: nvrDialog
+        title: qsTr("NVR Connection Settings")
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        standardButtons: Dialog.Save | Dialog.Cancel
+
+        ColumnLayout {
+            spacing: 8
+            width: parent.width
+
+            Text { text: qsTr("NVR Host / IP:"); color: "#9ca3af"; font.pixelSize: 12 }
+            TextField {
+                id: hostInput
+                Layout.fillWidth: true
+                text: backend.nvrHost
+                placeholderText: "e.g. 192.168.1.245"
+            }
+
+            Text { text: qsTr("RTSP Port:"); color: "#9ca3af"; font.pixelSize: 12 }
+            TextField {
+                id: portInput
+                Layout.fillWidth: true
+                text: backend.nvrPort.toString()
+                placeholderText: "554"
+            }
+
+            Text { text: qsTr("Username:"); color: "#9ca3af"; font.pixelSize: 12 }
+            TextField {
+                id: userInput
+                Layout.fillWidth: true
+                text: backend.username
+                placeholderText: "admin"
+            }
+
+            Text { text: qsTr("Password:"); color: "#9ca3af"; font.pixelSize: 12 }
+            TextField {
+                id: passInput
+                Layout.fillWidth: true
+                text: backend.password
+                echoMode: TextInput.Password
+            }
+        }
+
+        onAccepted: {
+            backend.setNvrConnection(hostInput.text, parseInt(portInput.text) || 554, userInput.text, passInput.text)
         }
     }
 }

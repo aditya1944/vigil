@@ -68,7 +68,7 @@ Rectangle {
                 // Left: key, Right: description
                 Repeater {
                     model: [
-                        { key: "1..5", desc: qsTr("1×1 up to 5×6 (All 30) Grid") },
+                        { key: "1..5", desc: qsTr("1×1 up to All Cameras Grid") },
                         { key: "Space", desc: qsTr("Play/Pause or Next Page") },
                         { key: "◀ / ▶", desc: qsTr("Prev/Next Page or Scrub ±5s") },
                         { key: "Mouse Wheel", desc: qsTr("Scrub video (Shift: 30s, Ctrl: 1m)") },

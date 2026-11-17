@@ -267,6 +267,88 @@ private slots:
         QCOMPARE(cams.at(0).toMap().value("group").toString(), QString("Main Gate & Office"));
         QCOMPARE(cams.at(24).toMap().value("name").toString(), QString("Residential Villa"));
     }
+
+    void backendAllGridDimensions()
+    {
+        Backend b;
+        // Default initialized with 30 cameras -> 5x6
+        QCOMPARE(b.allGridCols(), 5);
+        QCOMPARE(b.allGridRows(), 6);
+
+        // Dynamically simulate a 4-camera setup
+        QList<QVariantMap> fourCams;
+        for (int i = 1; i <= 4; ++i) {
+            QVariantMap c;
+            c["channel"] = i;
+            c["name"] = QString("Cam %1").arg(i);
+            c["ip"] = QString("10.0.0.%1").arg(10 + i);
+            c["group"] = "Office";
+            fourCams.append(c);
+        }
+        b.applyDiscoveredCameras(fourCams);
+        QCOMPARE(b.totalCameraCount(), 4);
+        QCOMPARE(b.allGridCols(), 2);
+        QCOMPARE(b.allGridRows(), 2);
+
+        // Dynamically simulate an 8-camera setup
+        QList<QVariantMap> eightCams;
+        for (int i = 1; i <= 8; ++i) {
+            QVariantMap c;
+            c["channel"] = i;
+            c["name"] = QString("Cam %1").arg(i);
+            c["ip"] = QString("10.0.0.%1").arg(10 + i);
+            c["group"] = "Warehouse";
+            eightCams.append(c);
+        }
+        b.applyDiscoveredCameras(eightCams);
+        QCOMPARE(b.totalCameraCount(), 8);
+        QCOMPARE(b.allGridCols(), 3);
+        QCOMPARE(b.allGridRows(), 3);
+    }
+
+    void backendParseRemoteDevicesAndTitles()
+    {
+        Backend b;
+        const QString sampleRemoteDev =
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_0.Address=192.168.1.101\n"
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_0.Enable=true\n"
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_0.VideoInputs[0].Name=Gate Device\n"
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_1.Address=192.168.1.102\n"
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_1.Enable=true\n"
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_1.VideoInputs[0].Name=Lobby Device\n"
+            // Channel 3 disabled: must NOT be included
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_2.Address=192.168.0.0\n"
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_2.Enable=false\n"
+            "table.RemoteDevice.uuid:System_CONFIG_NETCAMERA_INFO_2.VideoInputs[0].Name=\n";
+
+        const QString sampleTitles =
+            "table.ChannelTitle[0].Name=Main Gate Entrance\n"
+            "table.ChannelTitle[1].Name=Main Lobby\n";
+
+        const auto discovered = b.parseRemoteDevicesAndTitles(sampleRemoteDev, sampleTitles);
+        QCOMPARE(discovered.size(), 2);
+
+        QCOMPARE(discovered.at(0).value("channel").toInt(), 1);
+        QCOMPARE(discovered.at(0).value("name").toString(), QString("Main Gate Entrance"));
+        QCOMPARE(discovered.at(0).value("ip").toString(), QString("192.168.1.101"));
+
+        QCOMPARE(discovered.at(1).value("channel").toInt(), 2);
+        QCOMPARE(discovered.at(1).value("name").toString(), QString("Main Lobby"));
+        QCOMPARE(discovered.at(1).value("ip").toString(), QString("192.168.1.102"));
+    }
+
+    void backendSetNvrConnection()
+    {
+        Backend b;
+        b.setNvrConnection("10.10.10.50", 8554, "security", "P@ss123");
+        QCOMPARE(b.nvrHost(), QString("10.10.10.50"));
+        QCOMPARE(b.nvrPort(), 8554);
+        QCOMPARE(b.username(), QString("security"));
+        QCOMPARE(b.password(), QString("P@ss123"));
+        const QString url = b.buildRtspUrl(1, 0);
+        QVERIFY(url.contains("10.10.10.50:8554"));
+        QVERIFY(url.contains("security"));
+    }
 };
 
 QTEST_MAIN(CctvTests)
