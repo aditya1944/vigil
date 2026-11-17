@@ -21,7 +21,10 @@
 Backend::Backend(QObject *parent)
     : QObject(parent),
       m_snapshotDir(QDir::homePath() + "/cctv_snapshots"),
-      m_playbackDate(QDate::currentDate().toString("yyyy-MM-dd")) {
+      m_playbackDate(QDate::currentDate().toString("yyyy-MM-dd")),
+      m_recordingsDir(QDir::homePath() + "/cctv_recordings"),
+      m_isSavingRecording(false),
+      m_saveProcess(nullptr) {
 
     m_groups << "All Cameras"
              << "Farm 1"
@@ -58,6 +61,14 @@ Backend::Backend(QObject *parent)
 Backend::~Backend() {
     if (m_patrolTimer.isActive()) {
         m_patrolTimer.stop();
+    }
+    if (m_saveProcess) {
+        if (m_saveProcess->state() != QProcess::NotRunning) {
+            m_saveProcess->kill();
+            m_saveProcess->waitForFinished(500);
+        }
+        delete m_saveProcess;
+        m_saveProcess = nullptr;
     }
 }
 
@@ -913,4 +924,156 @@ void Backend::takePlaybackSnapshot(int channel, const QString &date, const QStri
         filePath
     };
     process->start("ffmpeg", args);
+}
+
+QString Backend::buildRecordingFilename(int channel, const QString &date, const QString &startTime, const QString &endTime) const {
+    QString camName = QString("ch%1").arg(channel, 2, 10, QChar('0'));
+    for (const auto &c : m_cameras) {
+        if (c.channel == channel) {
+            QString cleanName = c.name.trimmed();
+            cleanName.replace(QRegularExpression("[^a-zA-Z0-9_-]"), "_");
+            while (cleanName.contains("__")) cleanName.replace("__", "_");
+            while (cleanName.endsWith('_')) cleanName.chop(1);
+            while (cleanName.startsWith('_')) cleanName.remove(0, 1);
+            if (!cleanName.isEmpty()) {
+                camName = QString("ch%1_%2").arg(channel, 2, 10, QChar('0')).arg(cleanName);
+            }
+            break;
+        }
+    }
+
+    QString sClean = startTime.trimmed();
+    if (sClean.isEmpty()) sClean = "00:00:00";
+    if (sClean.count(':') == 1) sClean += ":00";
+    QString sFile = sClean;
+    sFile.replace(':', '-');
+
+    QString eClean = endTime.trimmed();
+    if (eClean.isEmpty()) eClean = "23:59:59";
+    if (eClean.count(':') == 1) eClean += ":59";
+    QString eFile = eClean;
+    eFile.replace(':', '-');
+
+    QString cleanDate = date.trimmed();
+    if (cleanDate.isEmpty()) {
+        cleanDate = QDate::currentDate().toString("yyyy-MM-dd");
+    }
+
+    return QString("recording_%1_%2_%3_to_%4.mp4")
+        .arg(camName, cleanDate, sFile, eFile);
+}
+
+void Backend::saveRecording(int channel, const QString &date, const QString &startTime, const QString &endTime) {
+    if (m_isSavingRecording) {
+        showMessage(tr("A recording is already being saved. Please wait or cancel it."));
+        return;
+    }
+
+    if (channel < 1 || channel > 30) {
+        showMessage(tr("Invalid channel for recording: %1").arg(channel));
+        return;
+    }
+
+    QDir().mkpath(m_recordingsDir);
+
+    const QString filename = buildRecordingFilename(channel, date, startTime, endTime);
+    QString fullPath = m_recordingsDir + "/" + filename;
+
+    // Disambiguate if target file already exists
+    int counter = 1;
+    const QString baseName = filename.chopped(4); // strip .mp4
+    while (QFile::exists(fullPath)) {
+        fullPath = QString("%1/%2_%3.mp4").arg(m_recordingsDir, baseName).arg(counter++);
+    }
+
+    QString sClean = startTime.trimmed();
+    if (sClean.isEmpty()) sClean = "00:00:00";
+    if (sClean.count(':') == 1) sClean += ":00";
+
+    QString eClean = endTime.trimmed();
+    if (eClean.isEmpty()) eClean = "23:59:59";
+    if (eClean.count(':') == 1) eClean += ":59";
+
+    QString cleanDate = date.trimmed();
+    if (cleanDate.isEmpty()) cleanDate = QDate::currentDate().toString("yyyy-MM-dd");
+
+    const QDateTime startDt = QDateTime::fromString(cleanDate + " " + sClean, "yyyy-MM-dd hh:mm:ss");
+    const QDateTime endDt = QDateTime::fromString(cleanDate + " " + eClean, "yyyy-MM-dd hh:mm:ss");
+
+    QString url;
+    if (startDt.isValid() && endDt.isValid()) {
+        url = buildPlaybackRtspUrl(channel, startDt, endDt);
+    } else {
+        const QString sRtsp = QString(cleanDate + "_" + sClean).replace("-", "_").replace(":", "_").replace(" ", "_");
+        const QString eRtsp = QString(cleanDate + "_" + eClean).replace("-", "_").replace(":", "_").replace(" ", "_");
+        const QString userEncoded = QUrl::toPercentEncoding(m_username);
+        const QString passEncoded = QUrl::toPercentEncoding(m_password);
+        url = QString("rtsp://%1:%2@%3:%4/cam/playback?channel=%5&starttime=%6&endtime=%7")
+            .arg(userEncoded, passEncoded, m_nvrHost)
+            .arg(m_nvrPort)
+            .arg(channel)
+            .arg(sRtsp, eRtsp);
+    }
+
+    const QStringList args = {
+        "-y",
+        "-rtsp_transport", "tcp",
+        "-i", url,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        fullPath
+    };
+
+    if (m_saveProcess) {
+        if (m_saveProcess->state() != QProcess::NotRunning) {
+            m_saveProcess->kill();
+            m_saveProcess->waitForFinished(500);
+        }
+        delete m_saveProcess;
+        m_saveProcess = nullptr;
+    }
+
+    m_saveProcess = new QProcess(this);
+    m_isSavingRecording = true;
+    m_lastSavedRecordingPath.clear();
+    emit isSavingRecordingChanged();
+    showMessage(tr("Saving recording (%1 to %2)...").arg(sClean, eClean));
+
+    connect(m_saveProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, fullPath](int exitCode, QProcess::ExitStatus exitStatus) {
+        m_isSavingRecording = false;
+        emit isSavingRecordingChanged();
+        if (exitStatus == QProcess::NormalExit && exitCode == 0 && QFile::exists(fullPath)) {
+            m_lastSavedRecordingPath = fullPath;
+            emit lastSavedRecordingPathChanged();
+            showMessage(tr("Saved recording: %1").arg(QFileInfo(fullPath).fileName()));
+        } else {
+            showMessage(tr("Recording save ended (%1)").arg(exitCode));
+        }
+    });
+
+    connect(m_saveProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError err) {
+        if (err != QProcess::Crashed) {
+            m_isSavingRecording = false;
+            emit isSavingRecordingChanged();
+            showMessage(tr("Error saving recording: %1").arg(m_saveProcess ? m_saveProcess->errorString() : "unknown"));
+        }
+    });
+
+    m_saveProcess->start("ffmpeg", args);
+}
+
+void Backend::cancelSaveRecording() {
+    if (m_saveProcess && m_saveProcess->state() != QProcess::NotRunning) {
+        m_saveProcess->terminate();
+        QTimer::singleShot(1500, this, [this]() {
+            if (m_saveProcess && m_saveProcess->state() != QProcess::NotRunning) {
+                m_saveProcess->kill();
+            }
+        });
+        showMessage(tr("Cancelled saving recording"));
+    }
+    m_isSavingRecording = false;
+    emit isSavingRecordingChanged();
 }

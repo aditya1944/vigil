@@ -51,6 +51,9 @@ class Backend : public QObject {
     Q_PROPERTY(QString playbackUrl READ playbackUrl NOTIFY playbackUrlChanged)
     Q_PROPERTY(QVariantList playbackClips READ playbackClips NOTIFY playbackClipsChanged)
     Q_PROPERTY(bool queryingClips READ queryingClips NOTIFY queryingClipsChanged)
+    Q_PROPERTY(bool isSavingRecording READ isSavingRecording NOTIFY isSavingRecordingChanged)
+    Q_PROPERTY(QString lastSavedRecordingPath READ lastSavedRecordingPath NOTIFY lastSavedRecordingPathChanged)
+    Q_PROPERTY(QString recordingsDir READ recordingsDir CONSTANT)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -83,6 +86,9 @@ public:
     QString playbackUrl() const { return m_playbackUrl; }
     QVariantList playbackClips() const { return m_playbackClips; }
     bool queryingClips() const { return m_queryingClips; }
+    bool isSavingRecording() const { return m_isSavingRecording; }
+    QString lastSavedRecordingPath() const { return m_lastSavedRecordingPath; }
+    QString recordingsDir() const { return m_recordingsDir; }
 
     Q_INVOKABLE void setCurrentGroup(const QString &group);
     Q_INVOKABLE void setGridCols(int cols);
@@ -115,6 +121,9 @@ public:
     Q_INVOKABLE void queryRecordedClips(int channel, const QString &date);
     Q_INVOKABLE void openExternalPlaybackMpv(int channel, const QString &date, const QString &startTime, const QString &endTime);
     Q_INVOKABLE void takePlaybackSnapshot(int channel, const QString &date, const QString &time);
+    Q_INVOKABLE void saveRecording(int channel, const QString &date, const QString &startTime, const QString &endTime);
+    Q_INVOKABLE void cancelSaveRecording();
+    Q_INVOKABLE QString buildRecordingFilename(int channel, const QString &date, const QString &startTime, const QString &endTime) const;
     Q_INVOKABLE QString buildPlaybackRtspUrl(int channel, const QDateTime &start, const QDateTime &end) const;
     Q_INVOKABLE void parseClipsResponse(const QString &text, int channel);
 
@@ -145,6 +154,8 @@ signals:
     void playbackUrlChanged();
     void playbackClipsChanged();
     void queryingClipsChanged();
+    void isSavingRecordingChanged();
+    void lastSavedRecordingPathChanged();
 
 private:
     void initDefaultCameras();
@@ -191,4 +202,8 @@ private:
     QString m_playbackUrl;
     QVariantList m_playbackClips;
     bool m_queryingClips = false;
+    QString m_recordingsDir;
+    bool m_isSavingRecording = false;
+    QString m_lastSavedRecordingPath;
+    QProcess *m_saveProcess = nullptr;
 };

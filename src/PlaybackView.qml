@@ -323,46 +323,14 @@ Rectangle {
                         }
                     }
 
-                    Rectangle { width: 1; height: 24; color: "#2d2d3d" }
-
-                    // Time Range
-                    Text { text: qsTr("Range:"); color: "#9ca3af"; font.pixelSize: 12 }
-
-                    TextField {
-                        id: startTimeInput
-                        Layout.preferredWidth: 75
-                        text: backend.playbackStartTime
-                        font.pixelSize: 12
-                        horizontalAlignment: Text.AlignHCenter
-                    }
-
-                    Text { text: "→"; color: "#6b7280" }
-
-                    TextField {
-                        id: endTimeInput
-                        Layout.preferredWidth: 75
-                        text: backend.playbackEndTime
-                        font.pixelSize: 12
-                        horizontalAlignment: Text.AlignHCenter
-                    }
-
-                    // Action Buttons
                     Button {
-                        text: qsTr("🔍 Search")
-                        highlighted: true
+                        text: qsTr("🔄 Refresh")
+                        flat: true
                         onClicked: {
                             backend.queryRecordedClips(backend.playbackChannel, backend.playbackDate)
                         }
                         ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Query NVR for available recorded files")
-                    }
-
-                    Button {
-                        text: qsTr("▶ Play")
-                        flat: true
-                        onClicked: {
-                            backend.startPlayback(backend.playbackChannel, backend.playbackDate, startTimeInput.text.trim(), endTimeInput.text.trim())
-                        }
+                        ToolTip.text: qsTr("Reload recorded clips from NVR for this camera and date")
                     }
 
                     Rectangle { width: 1; height: 24; color: "#2d2d3d" }
@@ -372,10 +340,27 @@ Rectangle {
                         text: qsTr("Open MPV")
                         flat: true
                         onClicked: {
-                            backend.openExternalPlaybackMpv(backend.playbackChannel, backend.playbackDate, startTimeInput.text.trim(), endTimeInput.text.trim())
+                            backend.openExternalPlaybackMpv(backend.playbackChannel, backend.playbackDate, backend.playbackStartTime, backend.playbackEndTime)
                         }
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Watch recorded footage in standalone hardware-accelerated MPV")
+                    }
+
+                    // Save Clip Button
+                    Button {
+                        text: backend.isSavingRecording ? qsTr("⏳ Saving... (Cancel)") : qsTr("💾 Save Clip")
+                        highlighted: !backend.isSavingRecording
+                        onClicked: {
+                            if (backend.isSavingRecording) {
+                                backend.cancelSaveRecording()
+                            } else {
+                                backend.saveRecording(backend.playbackChannel, backend.playbackDate, backend.playbackStartTime, backend.playbackEndTime)
+                            }
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: backend.isSavingRecording
+                            ? qsTr("Saving recording to disk. Click to cancel.")
+                            : qsTr("Save selected recording interval (%1 to %2) to disk").arg(backend.playbackStartTime).arg(backend.playbackEndTime)
                     }
                 }
 
@@ -536,7 +521,7 @@ Rectangle {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: backend.playbackUrl === ""
-                                  ? qsTr("Select a recorded clip or click Search to view footage")
+                                  ? qsTr("Select a recorded clip or click on timeline to view footage")
                                   : qsTr("Connecting to NVR Playback Stream...")
                             color: "#9ca3af"
                             font.pixelSize: 13
@@ -586,6 +571,22 @@ Rectangle {
                         }
 
                         Item { Layout.fillWidth: true }
+
+                        Button {
+                            text: backend.isSavingRecording ? qsTr("⏳ Saving...") : qsTr("💾 Save")
+                            flat: true
+                            onClicked: {
+                                if (backend.isSavingRecording) {
+                                    backend.cancelSaveRecording()
+                                } else {
+                                    backend.saveRecording(backend.playbackChannel, backend.playbackDate, backend.playbackStartTime, backend.playbackEndTime)
+                                }
+                            }
+                            ToolTip.visible: hovered
+                            ToolTip.text: backend.isSavingRecording
+                                ? qsTr("Click to cancel saving recording")
+                                : qsTr("Save current clip to disk with date and time range in filename")
+                        }
 
                         Button {
                             text: "📸 Snapshot"
@@ -654,7 +655,7 @@ Rectangle {
 
                         Text {
                             anchors.centerIn: parent
-                            text: backend.queryingClips ? qsTr("Querying NVR recorded files...") : qsTr("No recorded clips found.\nClick Search or pick another date.")
+                            text: backend.queryingClips ? qsTr("Querying NVR recorded files...") : qsTr("No recorded clips found.\nPick another date or check camera connection.")
                             color: "#6b7280"
                             font.pixelSize: 12
                             horizontalAlignment: Text.AlignHCenter
@@ -728,6 +729,19 @@ Rectangle {
                                         }
                                         ToolTip.visible: hovered
                                         ToolTip.text: qsTr("Open this clip in MPV")
+                                    }
+
+                                    Button {
+                                        text: "💾"
+                                        flat: true
+                                        implicitHeight: 28
+                                        implicitWidth: 32
+                                        padding: 2
+                                        onClicked: {
+                                            backend.saveRecording(backend.playbackChannel, backend.playbackDate, modelData.startTimeDisplay, modelData.endTimeDisplay)
+                                        }
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: qsTr("Save this clip to ~/cctv_recordings with date and time range in filename")
                                     }
                                 }
 

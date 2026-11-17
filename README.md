@@ -43,8 +43,9 @@ Engineered from the ground up for modern Wayland compositors (Hyprland, Sway, GN
   - **Zoom & Pan Controls**: Zoom in up to 8× with `Zoom +`, `Ctrl + Wheel`, or `+` / `-` keys; snap back to full screen width anytime with `Fit 24h` or key `0`.
   - **Playhead & Live Hover Guide**: Red playhead needle tracks active playback position with `🎯 Center` auto-centering; cyan hover needle and timestamp flag preview any point before clicking.
   - **Mouse-Wheel Scrub-to-Seek**: Scroll the mouse wheel directly over the video player to scrub forward/backward (`±5s`, `±30s` with Shift, `±1m` with Ctrl) with an animated On-Screen Display (OSD) time badge.
-  - **Horizontally Scrollable Filter Bar**: Flickable top navigation ensuring all camera selection, date/time pickers, and search actions remain accessible on compact or tiled windows.
-  - **Scrollable Recordings Drawer**: Lists recorded clips with exact start/end times, durations, file sizes in MB, and one-click play or MPV playback.
+  - **Streamlined Playback Navigation**: Clean flickable top navigation with camera picker, date navigator, quick "Today" shortcut, NVR clips refresh, standalone MPV launcher, and 1-click recording saver.
+  - **Lossless Clip Saving with Date & Time Range**: Save any playback interval or drawer clip directly to `~/cctv_recordings` with formatted filenames containing channel, camera name, date, and time range (e.g., `recording_ch01_Farm_Main_Gate_2026-11-17_14-00-00_to_15-00-00.mp4`).
+  - **Scrollable Recordings Drawer**: Lists recorded clips with exact start/end times, durations, file sizes in MB, and one-click play, MPV playback, or disk save (`💾`).
   - **Fine-Grained Stream Progress Slider & Speed Controls**: Variable speed playback (`0.5×`, `1×`, `2×`, `4×`), snapshot, and audio toggle.
   - **Seamless Live / Playback Toggle**: Instant mode switching from the top toolbar or via the `⏪ Playback` button on any camera tile.
 - **Hardware-Accelerated Decoding**: Leverages Intel VAAPI, AMD VAAPI, or NVIDIA NVDEC through Qt 6's FFmpeg multimedia backend for minimal CPU overhead.

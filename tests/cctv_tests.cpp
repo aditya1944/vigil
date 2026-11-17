@@ -160,6 +160,31 @@ private slots:
         QCOMPARE(first.value("sizeMb").toString(), QString("100.0"));
         QVERIFY(first.value("playbackUrl").toString().contains("channel=5"));
     }
+
+    void backendRecordingFilenameGeneration()
+    {
+        Backend b;
+        const QString fn1 = b.buildRecordingFilename(1, "2026-11-17", "14:00:00", "15:00:00");
+        QCOMPARE(fn1, QString("recording_ch01_Farm_Main_Gate_2026-11-17_14-00-00_to_15-00-00.mp4"));
+
+        const QString fn2 = b.buildRecordingFilename(2, "2026-11-17", "08:30:00", "09:00:00");
+        QCOMPARE(fn2, QString("recording_ch02_Farm_office_room_2026-11-17_08-30-00_to_09-00-00.mp4"));
+
+        const QString fn3 = b.buildRecordingFilename(30, "2026-11-17", "10:15:30", "11:45:00");
+        QVERIFY(fn3.contains("ch30"));
+        QVERIFY(fn3.contains("2026-11-17"));
+        QVERIFY(fn3.contains("10-15-30_to_11-45-00"));
+        QVERIFY(fn3.endsWith(".mp4"));
+    }
+
+    void backendRecordingSaveState()
+    {
+        Backend b;
+        QCOMPARE(b.isSavingRecording(), false);
+        QVERIFY(!b.recordingsDir().isEmpty());
+        b.cancelSaveRecording();
+        QCOMPARE(b.isSavingRecording(), false);
+    }
 };
 
 QTEST_MAIN(CctvTests)
