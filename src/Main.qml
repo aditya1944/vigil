@@ -97,11 +97,13 @@ ApplicationWindow {
 
                 // Video Grid / Focus Area
                 Item {
+                    id: viewArea
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
                     // Focused Single Camera View
                     Item {
+                        id: focusedContainer
                         anchors.fill: parent
                         anchors.margins: 6
                         visible: backend.focusedChannel > 0
@@ -150,31 +152,39 @@ ApplicationWindow {
                                 Layout.fillHeight: true
                                 modelData: backend.focusedCamera
                                 isFocused: true
+                                active: backend.focusedChannel > 0
                             }
                         }
                     }
 
                     // Multi-camera Grid View
                     Item {
+                        id: gridContainer
                         anchors.fill: parent
                         anchors.margins: 6
                         visible: backend.focusedChannel <= 0
 
-                        GridLayout {
-                            anchors.fill: parent
-                            columns: backend.gridCols
-                            rows: backend.gridRows
-                            rowSpacing: 6
-                            columnSpacing: 6
+                        Grid {
+                            id: cameraGrid
+                            width: gridContainer.width
+                            height: gridContainer.height
+                            columns: Math.max(1, backend.gridCols)
+                            rows: Math.max(1, backend.gridRows)
+                            spacing: 6
+
+                            readonly property real cellWidth: Math.max(10, Math.floor((width - spacing * (columns - 1)) / columns))
+                            readonly property real cellHeight: Math.max(10, Math.floor((height - spacing * (rows - 1)) / rows))
 
                             Repeater {
                                 model: backend.visibleCameras
 
                                 delegate: CameraTile {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
+                                    width: cameraGrid.cellWidth
+                                    height: cameraGrid.cellHeight
                                     modelData: modelData
                                     isFocused: false
+                                    staggerIndex: index
+                                    active: backend.focusedChannel <= 0
                                 }
                             }
                         }

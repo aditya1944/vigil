@@ -5,6 +5,8 @@ import QtMultimedia
 
 Rectangle {
     id: root
+    implicitWidth: 320
+    implicitHeight: 180
     color: "#131317"
     border.color: isFocused ? theme.accent : (mouseArea.containsMouse ? "#3b4252" : "#1e1e24")
     border.width: isFocused ? 2 : 1
@@ -13,52 +15,71 @@ Rectangle {
 
     property var modelData: null
     property bool isFocused: false
+    property bool active: true
+    property int staggerIndex: 0
 
     readonly property var cam: modelData || ({})
-    readonly property string streamUrl: isFocused ? (cam.mainUrl || "") : (cam.streamUrl || "")
+    readonly property string targetUrl: active ? (isFocused ? (cam.mainUrl || "") : (cam.streamUrl || "")) : ""
     readonly property int channel: cam.channel || 0
     readonly property string camName: cam.name || ""
     readonly property string camIp: cam.ip || ""
 
+    readonly property bool isConnecting: active && (player.playbackState !== MediaPlayer.PlayingState)
+
     MediaPlayer {
         id: player
         videoOutput: videoOutput
-        source: root.streamUrl
         audioOutput: null
         loops: MediaPlayer.Infinite
 
         onErrorOccurred: (error, errorString) => {
-            if (root.streamUrl !== "") {
+            if (root.active && root.targetUrl !== "") {
                 console.log("Stream error ch " + root.channel + ":", errorString)
-                retryTimer.start()
-            }
-        }
-
-        Component.onCompleted: {
-            if (root.streamUrl !== "") play()
-        }
-    }
-
-    Connections {
-        target: root
-        function onStreamUrlChanged() {
-            if (root.streamUrl !== "") {
-                player.play()
-            } else {
-                player.stop()
+                reconnectTimer.restart()
             }
         }
     }
 
     Timer {
-        id: retryTimer
-        interval: 3000
+        id: connectTimer
+        interval: Math.max(20, root.staggerIndex * 120)
         repeat: false
         onTriggered: {
-            if (player.playbackState !== MediaPlayer.PlayingState) {
+            if (root.active && root.targetUrl !== "") {
+                player.source = root.targetUrl
                 player.play()
             }
         }
+    }
+
+    Timer {
+        id: reconnectTimer
+        interval: 3000
+        repeat: false
+        onTriggered: {
+            if (root.active && root.targetUrl !== "" && player.playbackState !== MediaPlayer.PlayingState) {
+                player.stop()
+                player.source = ""
+                connectTimer.restart()
+            }
+        }
+    }
+
+    function updateStream() {
+        player.stop()
+        player.source = ""
+        reconnectTimer.stop()
+        if (root.active && root.targetUrl !== "") {
+            connectTimer.restart()
+        }
+    }
+
+    onTargetUrlChanged: updateStream()
+    onActiveChanged: updateStream()
+    Component.onCompleted: updateStream()
+    Component.onDestruction: {
+        player.stop()
+        player.source = ""
     }
 
     VideoOutput {
@@ -90,7 +111,7 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         color: "#18181f"
-        visible: player.playbackState !== MediaPlayer.PlayingState
+        visible: root.isConnecting
         z: 2
 
         Column {
@@ -115,6 +136,7 @@ Rectangle {
 
     // Top Header info bar (Channel badge + Name + IP)
     Rectangle {
+        id: headerBar
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
