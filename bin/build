@@ -5,6 +5,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 mkdir -p "$ROOT/build"
 cd "$ROOT/build"
 
+touch "$ROOT/src/resources.qrc"
 qmake6 "$ROOT/cctv.pro"
 make -j"$(nproc)"
 
