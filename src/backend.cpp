@@ -651,6 +651,10 @@ QString Backend::buildPlaybackRtspUrl(int channel, const QDateTime &start, const
 void Backend::setActiveMode(const QString &mode) {
     if (m_activeMode == mode) return;
     m_activeMode = mode;
+    if (m_activeMode == "playback" && m_patrolTimer.isActive()) {
+        m_patrolTimer.stop();
+        emit patrolActiveChanged();
+    }
     emit activeModeChanged();
 }
 

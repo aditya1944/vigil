@@ -159,7 +159,13 @@ Rectangle {
         anchors.right: parent.right
         height: 34
         color: Qt.rgba(0, 0, 0, 0.72)
+        visible: !root.isFocused || mouseArea.containsMouse
+        opacity: visible ? 1.0 : 0.0
         z: 3
+
+        Behavior on opacity {
+            NumberAnimation { duration: 150 }
+        }
 
         Row {
             anchors.left: parent.left
@@ -265,7 +271,7 @@ Rectangle {
         anchors.right: parent.right
         height: 36
         color: Qt.rgba(0, 0, 0, 0.75)
-        visible: mouseArea.containsMouse || root.isFocused
+        visible: mouseArea.containsMouse
         opacity: visible ? 1.0 : 0.0
         z: 3
 

@@ -10,10 +10,14 @@
 class CctvTests : public QObject {
     Q_OBJECT
 
+    QTemporaryDir m_testHome;
+
 private slots:
     void initTestCase()
     {
         qputenv("QT_FFMPEG_RTSP_TRANSPORT", "tcp");
+        QVERIFY(m_testHome.isValid());
+        qputenv("HOME", m_testHome.path().toUtf8());
     }
 
     void backendInitializesWith30Cameras()

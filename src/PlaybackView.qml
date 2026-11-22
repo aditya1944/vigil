@@ -469,6 +469,25 @@ Rectangle {
                             ? qsTr("Saving recording to disk. Click to cancel.")
                             : qsTr("Save selected recording interval (%1 to %2) to disk").arg(backend.playbackStartTime).arg(backend.playbackEndTime)
                     }
+
+                    // Snapshot Button
+                    Button {
+                        text: qsTr("📸 Snapshot")
+                        flat: true
+                        onClicked: backend.takePlaybackSnapshot(backend.playbackChannel, backend.playbackDate, backend.playbackStartTime)
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Capture still frame snapshot from playback")
+                    }
+
+                    Rectangle { width: 1; height: 24; color: "#2d2d3d" }
+
+                    // Active interval display
+                    Text {
+                        text: "(" + backend.playbackStartTime + " → " + backend.playbackEndTime + ")"
+                        color: "#9ca3af"
+                        font.pixelSize: 12
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
 
                 ScrollBar.horizontal: ScrollBar {
@@ -654,72 +673,7 @@ Rectangle {
                     }
                 }
 
-                // Top Floating Info Bar
-                Rectangle {
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    height: 38
-                    color: Qt.rgba(0, 0, 0, 0.75)
-                    z: 2
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
-
-                        // Playback Badge
-                        Rectangle {
-                            width: 82
-                            height: 22
-                            radius: 3
-                            color: "#f59e0b"
-                            Row {
-                                anchors.centerIn: parent
-                                spacing: 4
-                                Text { text: "⏪"; font.pixelSize: 10 }
-                                Text { text: qsTr("PLAYBACK"); color: "black"; font.bold: true; font.pixelSize: 10 }
-                            }
-                        }
-
-                        Text {
-                            text: qsTr("Ch %1: %2").arg(backend.playbackChannel).arg(backend.playbackCamera.name || "")
-                            color: "white"
-                            font.bold: true
-                            font.pixelSize: 13
-                        }
-
-                        Text {
-                            text: "• " + backend.playbackDate + " (" + backend.playbackStartTime + " → " + backend.playbackEndTime + ")"
-                            color: "#9ca3af"
-                            font.pixelSize: 12
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        Button {
-                            text: backend.isSavingRecording ? qsTr("⏳ Saving...") : qsTr("💾 Save")
-                            flat: true
-                            onClicked: {
-                                if (backend.isSavingRecording) {
-                                    backend.cancelSaveRecording()
-                                } else {
-                                    backend.saveRecording(backend.playbackChannel, backend.playbackDate, backend.playbackStartTime, backend.playbackEndTime)
-                                }
-                            }
-                            ToolTip.visible: hovered
-                            ToolTip.text: backend.isSavingRecording
-                                ? qsTr("Click to cancel saving recording")
-                                : qsTr("Save current clip to disk with date and time range in filename")
-                        }
-
-                        Button {
-                            text: "📸 Snapshot"
-                            flat: true
-                            onClicked: backend.takePlaybackSnapshot(backend.playbackChannel, backend.playbackDate, backend.playbackStartTime)
-                        }
-                    }
-                }
             }
 
             // Right Drawer: Recorded Clips from NVR
