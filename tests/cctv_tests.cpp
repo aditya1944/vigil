@@ -1,9 +1,12 @@
 #include <QDir>
 #include <QFile>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include "backend.h"
+#include "rtspplaybackproxy.h"
 #include "theme.h"
 #include "translator.h"
 
@@ -366,6 +369,178 @@ private slots:
         const QString url = b.buildRtspUrl(1, 0);
         QVERIFY(url.contains("10.10.10.50:8554"));
         QVERIFY(url.contains("security"));
+    }
+
+    void backendPlaybackSpeedAndProxyUrl()
+    {
+        Backend b;
+        QCOMPARE(b.playbackSpeed(), 1.0);
+
+        QSignalSpy speedSpy(&b, &Backend::playbackSpeedChanged);
+        b.setPlaybackSpeed(2.0);
+        QCOMPARE(b.playbackSpeed(), 2.0);
+        QCOMPARE(speedSpy.count(), 1);
+
+        // Clamping bounds
+        b.setPlaybackSpeed(99.0);
+        QCOMPARE(b.playbackSpeed(), 16.0);
+        b.setPlaybackSpeed(0.01);
+        QCOMPARE(b.playbackSpeed(), 0.25);
+        b.setPlaybackSpeed(1.0);
+
+        b.startPlayback(4, "2026-11-24", "10:00:00", "11:00:00");
+        QVERIFY(b.playbackUrl().contains("/cam/playback?channel=4"));
+        QVERIFY(b.playbackStreamUrl().startsWith("rtsp://127.0.0.1:"));
+        QVERIFY(b.playbackStreamUrl().contains("/cam/playback?channel=4"));
+        QVERIFY(!b.playbackStreamUrl().contains(b.password()));
+    }
+
+    void rtspProxyInjectsSpeedAndHandlesMidStreamChange()
+    {
+        QTcpServer mockNvr;
+        QVERIFY(mockNvr.listen(QHostAddress::LocalHost, 0));
+
+        QStringList receivedMethods;
+        QStringList receivedSpeeds;
+        QTcpSocket *upstreamPeer = nullptr;
+        bool sentChallenge = false;
+
+        QObject::connect(&mockNvr, &QTcpServer::newConnection, [&]() {
+            upstreamPeer = mockNvr.nextPendingConnection();
+            QObject::connect(upstreamPeer, &QTcpSocket::readyRead, [&, upstreamPeer]() {
+                static QByteArray buf;
+                buf.append(upstreamPeer->readAll());
+                while (true) {
+                    const int end = buf.indexOf("\r\n\r\n");
+                    if (end == -1) break;
+                    const QString req = QString::fromLatin1(buf.left(end));
+                    buf.remove(0, end + 4);
+
+                    const QStringList lines = req.split("\r\n");
+                    const QString method = lines.first().split(' ').first();
+                    QString cseq = "1";
+                    QString auth;
+                    QString speed;
+                    for (const QString &l : lines.mid(1)) {
+                        if (l.startsWith("CSeq:", Qt::CaseInsensitive)) cseq = l.mid(5).trimmed();
+                        else if (l.startsWith("Authorization:", Qt::CaseInsensitive)) auth = l.mid(14).trimmed();
+                        else if (l.startsWith("Speed:", Qt::CaseInsensitive)) speed = l.mid(6).trimmed();
+                    }
+
+                    if (method == "DESCRIBE" && !sentChallenge) {
+                        sentChallenge = true;
+                        upstreamPeer->write(
+                            QString("RTSP/1.0 401 Unauthorized\r\nCSeq: %1\r\n"
+                                    "WWW-Authenticate: Digest realm=\"NVR\", nonce=\"abc123\"\r\n\r\n")
+                                .arg(cseq).toLatin1());
+                        continue;
+                    }
+
+                    receivedMethods.append(method);
+                    if (method == "DESCRIBE") {
+                        QVERIFY(auth.startsWith("Digest "));
+                        const QByteArray sdp = "v=0\r\nm=video 0 RTP/AVP 98\r\na=control:trackID=0\r\n";
+                        upstreamPeer->write(
+                            QString("RTSP/1.0 200 OK\r\nCSeq: %1\r\nContent-Type: application/sdp\r\n"
+                                    "Content-Length: %2\r\n\r\n").arg(cseq).arg(sdp.size()).toLatin1() + sdp);
+                    } else if (method == "SETUP") {
+                        upstreamPeer->write(
+                            QString("RTSP/1.0 200 OK\r\nCSeq: %1\r\nSession: SESS42\r\n"
+                                    "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n")
+                                .arg(cseq).toLatin1());
+                    } else if (method == "PLAY") {
+                        receivedSpeeds.append(speed);
+                        upstreamPeer->write(
+                            QString("RTSP/1.0 200 OK\r\nCSeq: %1\r\nSession: SESS42\r\n\r\n")
+                                .arg(cseq).toLatin1());
+                        // Send an interleaved RTP packet on channel 0
+                        QByteArray rtpPacket;
+                        rtpPacket.append('\x24');
+                        rtpPacket.append('\x00');
+                        rtpPacket.append('\x00');
+                        rtpPacket.append('\x04');
+                        rtpPacket.append("RTP1");
+                        upstreamPeer->write(rtpPacket);
+
+                        // Send an RTCP SR (PT=200, 28 bytes = 7 words -> length field 6) on channel 1
+                        QByteArray rtcpSr(32, '\0');
+                        rtcpSr[0] = '\x24';
+                        rtcpSr[1] = '\x01';
+                        rtcpSr[2] = '\x00';
+                        rtcpSr[3] = '\x1c'; // 28 bytes payload
+                        rtcpSr[4] = '\x80';
+                        rtcpSr[5] = char(200); // PT = 200 (SR)
+                        rtcpSr[6] = '\x00';
+                        rtcpSr[7] = '\x06';
+                        upstreamPeer->write(rtcpSr);
+                    }
+                }
+            });
+        });
+
+        RtspPlaybackProxy proxy;
+        proxy.setUpstream("127.0.0.1", mockNvr.serverPort(), "admin", "secret");
+        proxy.setPlaybackSpeed(2.0);
+        QVERIFY(proxy.ensureStarted());
+
+        const QString proxiedUrl = proxy.rewriteUrlForProxy(
+            QString("rtsp://admin:secret@127.0.0.1:%1/cam/playback?channel=1").arg(mockNvr.serverPort()));
+
+        QTcpSocket client;
+        client.connectToHost("127.0.0.1", proxy.port());
+        QVERIFY(client.waitForConnected(2000));
+
+        // 1. DESCRIBE (proxy handles 401 Digest challenge transparently)
+        client.write(QString("DESCRIBE %1 RTSP/1.0\r\nCSeq: 10\r\n\r\n").arg(proxiedUrl).toLatin1());
+        QTRY_VERIFY_WITH_TIMEOUT(client.bytesAvailable() > 0, 2000);
+        QTest::qWait(50);
+        const QByteArray descResp = client.readAll();
+        QVERIFY(descResp.contains("RTSP/1.0 200 OK"));
+        QVERIFY(descResp.contains("CSeq: 10"));
+        QVERIFY(descResp.contains("m=video"));
+
+        // 2. SETUP
+        client.write(QString("SETUP %1/trackID=0 RTSP/1.0\r\nCSeq: 11\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n")
+                         .arg(proxiedUrl).toLatin1());
+        QTRY_VERIFY_WITH_TIMEOUT(client.bytesAvailable() > 0, 2000);
+        QTest::qWait(50);
+        const QByteArray setupResp = client.readAll();
+        QVERIFY(setupResp.contains("CSeq: 11"));
+        QVERIFY(setupResp.contains("Session: SESS42"));
+
+        // 3. Initial PLAY -> proxy injects Speed: 2.0, forwards initial RTCP SR
+        client.write(QString("PLAY %1 RTSP/1.0\r\nCSeq: 12\r\nSession: SESS42\r\nRange: npt=0.000-\r\n\r\n")
+                         .arg(proxiedUrl).toLatin1());
+        QTRY_VERIFY_WITH_TIMEOUT(client.bytesAvailable() > 0, 2000);
+        QTest::qWait(50);
+        const QByteArray playResp = client.readAll();
+        QVERIFY(playResp.contains("CSeq: 12"));
+        QVERIFY(playResp.contains("RTP1"));
+        QVERIFY(playResp.contains(QByteArray("\x24\x01\x00\x1c", 4)));
+        QCOMPARE(receivedSpeeds, QStringList({"2.0"}));
+
+        // 4. Mid-stream speed change -> proxy sends PLAY Speed: 4.0, swallows unsolicited 200 OK,
+        //    forwards RTP, and suppresses subsequent RTCP SR on channel 1
+        proxy.setPlaybackSpeed(4.0);
+        QTRY_COMPARE_WITH_TIMEOUT(receivedSpeeds.size(), 2, 2000);
+        QCOMPARE(receivedSpeeds.at(1), QString("4.0"));
+        QTest::qWait(50);
+        const QByteArray afterSpeedUp = client.readAll();
+        QVERIFY(!afterSpeedUp.contains("RTSP/1.0 200 OK"));
+        QVERIFY(afterSpeedUp.contains("RTP1"));
+        QVERIFY(!afterSpeedUp.contains(QByteArray("\x24\x01\x00\x1c", 4)));
+
+        // 5. Slowing back down -> proxy sends PLAY Speed: 1.0 (clamped from 0.5 for upstream)
+        //    and continues suppressing subsequent RTCP SRs so PTS does not jump backward
+        proxy.setPlaybackSpeed(0.5);
+        QTRY_COMPARE_WITH_TIMEOUT(receivedSpeeds.size(), 3, 2000);
+        QCOMPARE(receivedSpeeds.at(2), QString("1.0"));
+        QTest::qWait(50);
+        const QByteArray afterSlowDown = client.readAll();
+        QVERIFY(afterSlowDown.contains("RTP1"));
+        QVERIFY(!afterSlowDown.contains(QByteArray("\x24\x01\x00\x1c", 4)));
+
+        client.disconnectFromHost();
     }
 };
 
