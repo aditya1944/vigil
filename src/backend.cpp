@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "rtspplaybackproxy.h"
 
 #include <QDir>
 #include <QFile>
@@ -37,8 +38,11 @@ Backend::Backend(QObject *parent)
              << "House & Garage"
              << "Livestock & Brooder";
 
+    m_rtspProxy = new RtspPlaybackProxy(this);
+
     initDefaultCameras();
     loadConfig();
+    syncPlaybackProxyConfig();
 
     m_netManager = new QNetworkAccessManager(this);
     connect(m_netManager, &QNetworkAccessManager::authenticationRequired, this,
@@ -197,6 +201,7 @@ void Backend::loadConfig() {
 
     emit camerasChanged();
     updateVisibleCameras();
+    syncPlaybackProxyConfig();
 }
 
 void Backend::saveConfig() {
@@ -654,6 +659,8 @@ void Backend::setActiveMode(const QString &mode) {
     if (m_activeMode == "playback" && m_patrolTimer.isActive()) {
         m_patrolTimer.stop();
         emit patrolActiveChanged();
+    } else if (m_activeMode != "playback" && m_rtspProxy) {
+        m_rtspProxy->closeAllSessions();
     }
     emit activeModeChanged();
 }
@@ -743,11 +750,35 @@ void Backend::startPlayback(int channel, const QString &date, const QString &sta
             .arg(sClean, eClean);
     }
 
+    syncPlaybackProxyConfig();
+    if (m_rtspProxy && m_rtspProxy->ensureStarted()) {
+        m_playbackStreamUrl = m_rtspProxy->rewriteUrlForProxy(m_playbackUrl);
+    } else {
+        m_playbackStreamUrl = m_playbackUrl;
+    }
+
     emit playbackChannelChanged();
     emit playbackDateChanged();
     emit playbackTimeChanged();
     emit playbackUrlChanged();
+    emit playbackStreamUrlChanged();
     showMessage(tr("Loaded playback for Ch %1 (%2 - %3)").arg(channel).arg(startTime).arg(endTime));
+}
+
+void Backend::setPlaybackSpeed(double speed) {
+    const double clamped = qBound(0.25, speed, 16.0);
+    if (qFuzzyCompare(m_playbackSpeed, clamped)) return;
+    m_playbackSpeed = clamped;
+    if (m_rtspProxy) {
+        m_rtspProxy->setPlaybackSpeed(m_playbackSpeed);
+    }
+    emit playbackSpeedChanged();
+}
+
+void Backend::syncPlaybackProxyConfig() {
+    if (!m_rtspProxy) return;
+    m_rtspProxy->setUpstream(m_nvrHost, m_nvrPort, m_username, m_password);
+    m_rtspProxy->setPlaybackSpeed(m_playbackSpeed);
 }
 
 void Backend::queryRecordedClips(int channel, const QString &date) {
@@ -1364,6 +1395,7 @@ void Backend::applyCameraNames(const QMap<int, QString> &names) {
 void Backend::setNvrHost(const QString &host) {
     if (host.trimmed().isEmpty() || m_nvrHost == host.trimmed()) return;
     m_nvrHost = host.trimmed();
+    syncPlaybackProxyConfig();
     emit nvrConfigChanged();
     for (auto &cam : m_cameras) {
         cam.mainUrl = buildRtspUrl(cam.channel, 0);
@@ -1374,6 +1406,7 @@ void Backend::setNvrHost(const QString &host) {
 void Backend::setNvrPort(int port) {
     if (port <= 0 || m_nvrPort == port) return;
     m_nvrPort = port;
+    syncPlaybackProxyConfig();
     emit nvrConfigChanged();
     for (auto &cam : m_cameras) {
         cam.mainUrl = buildRtspUrl(cam.channel, 0);
@@ -1384,12 +1417,14 @@ void Backend::setNvrPort(int port) {
 void Backend::setUsername(const QString &user) {
     if (user.trimmed().isEmpty() || m_username == user.trimmed()) return;
     m_username = user.trimmed();
+    syncPlaybackProxyConfig();
     emit nvrConfigChanged();
 }
 
 void Backend::setPassword(const QString &pass) {
     if (m_password == pass) return;
     m_password = pass;
+    syncPlaybackProxyConfig();
     emit nvrConfigChanged();
 }
 
@@ -1400,6 +1435,7 @@ void Backend::setNvrConnection(const QString &host, int port, const QString &use
     if (!user.trimmed().isEmpty()) m_username = user.trimmed();
     if (!pass.isEmpty()) m_password = pass;
 
+    syncPlaybackProxyConfig();
     emit nvrConfigChanged();
 
     for (auto &cam : m_cameras) {

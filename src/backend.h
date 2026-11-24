@@ -12,6 +12,8 @@
 #include <QTime>
 #include <QNetworkAccessManager>
 
+class RtspPlaybackProxy;
+
 struct CameraInfo {
     int channel = 1;
     QString name;
@@ -56,6 +58,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString playbackStartTime READ playbackStartTime WRITE setPlaybackStartTime NOTIFY playbackTimeChanged)
     Q_PROPERTY(QString playbackEndTime READ playbackEndTime WRITE setPlaybackEndTime NOTIFY playbackTimeChanged)
     Q_PROPERTY(QString playbackUrl READ playbackUrl NOTIFY playbackUrlChanged)
+    Q_PROPERTY(QString playbackStreamUrl READ playbackStreamUrl NOTIFY playbackStreamUrlChanged)
+    Q_PROPERTY(double playbackSpeed READ playbackSpeed WRITE setPlaybackSpeed NOTIFY playbackSpeedChanged)
     Q_PROPERTY(QVariantList playbackClips READ playbackClips NOTIFY playbackClipsChanged)
     Q_PROPERTY(bool queryingClips READ queryingClips NOTIFY queryingClipsChanged)
     Q_PROPERTY(bool isSavingRecording READ isSavingRecording NOTIFY isSavingRecordingChanged)
@@ -106,6 +110,8 @@ public:
     QString playbackStartTime() const { return m_playbackStartTime; }
     QString playbackEndTime() const { return m_playbackEndTime; }
     QString playbackUrl() const { return m_playbackUrl; }
+    QString playbackStreamUrl() const { return m_playbackStreamUrl; }
+    double playbackSpeed() const { return m_playbackSpeed; }
     QVariantList playbackClips() const { return m_playbackClips; }
     bool queryingClips() const { return m_queryingClips; }
     bool isSavingRecording() const { return m_isSavingRecording; }
@@ -144,6 +150,7 @@ public:
     Q_INVOKABLE void setPlaybackEndTime(const QString &time);
     Q_INVOKABLE void enterPlayback(int channel);
     Q_INVOKABLE void startPlayback(int channel, const QString &date, const QString &startTime, const QString &endTime);
+    Q_INVOKABLE void setPlaybackSpeed(double speed);
     Q_INVOKABLE void queryRecordedClips(int channel, const QString &date);
     Q_INVOKABLE void queryAvailableRecordingDates(int channel);
     Q_INVOKABLE QStringList parseDatesResponse(const QString &text) const;
@@ -191,6 +198,8 @@ signals:
     void playbackDateChanged();
     void playbackTimeChanged();
     void playbackUrlChanged();
+    void playbackStreamUrlChanged();
+    void playbackSpeedChanged();
     void playbackClipsChanged();
     void queryingClipsChanged();
     void isSavingRecordingChanged();
@@ -208,6 +217,7 @@ private:
     void doFindFile(const QString &objectId, int channel, const QString &date);
     void doFindNextFile(const QString &objectId, int channel, const QString &date);
     void doFindDestroy(const QString &objectId);
+    void syncPlaybackProxyConfig();
 
     QString m_nvrHost = "192.168.1.245";
     int m_nvrPort = 554;
@@ -240,6 +250,9 @@ private:
     QString m_playbackStartTime = "00:00:00";
     QString m_playbackEndTime = "23:59:59";
     QString m_playbackUrl;
+    QString m_playbackStreamUrl;
+    double m_playbackSpeed = 1.0;
+    RtspPlaybackProxy *m_rtspProxy = nullptr;
     QVariantList m_playbackClips;
     bool m_queryingClips = false;
     QString m_recordingsDir;

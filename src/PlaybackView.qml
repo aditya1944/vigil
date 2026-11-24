@@ -521,16 +521,17 @@ Rectangle {
                     id: playbackPlayer
                     videoOutput: playbackVideoOutput
                     audioOutput: playbackAudioOutput
-                    source: (backend.activeMode === "playback") ? backend.playbackUrl : ""
+                    source: (backend.activeMode === "playback") ? backend.playbackStreamUrl : ""
+                    playbackRate: backend.playbackSpeed
 
                     onErrorOccurred: (error, errorString) => {
-                        if (backend.activeMode === "playback" && backend.playbackUrl !== "") {
+                        if (backend.activeMode === "playback" && backend.playbackStreamUrl !== "") {
                             console.log("Playback error:", errorString)
                         }
                     }
 
                     Component.onCompleted: {
-                        if (backend.activeMode === "playback" && backend.playbackUrl !== "") {
+                        if (backend.activeMode === "playback" && backend.playbackStreamUrl !== "") {
                             play()
                         }
                     }
@@ -543,10 +544,10 @@ Rectangle {
 
                 Connections {
                     target: backend
-                    function onPlaybackUrlChanged() {
+                    function onPlaybackStreamUrlChanged() {
                         playbackPlayer.stop()
-                        if (backend.activeMode === "playback" && backend.playbackUrl !== "") {
-                            playbackPlayer.source = backend.playbackUrl
+                        if (backend.activeMode === "playback" && backend.playbackStreamUrl !== "") {
+                            playbackPlayer.source = backend.playbackStreamUrl
                             playbackPlayer.play()
                         } else {
                             playbackPlayer.source = ""
@@ -557,9 +558,9 @@ Rectangle {
                             playbackPlayer.stop()
                             playbackPlayer.source = ""
                         } else {
-                            if (backend.playbackUrl !== "") {
+                            if (backend.playbackStreamUrl !== "") {
                                 playbackPlayer.stop()
-                                playbackPlayer.source = backend.playbackUrl
+                                playbackPlayer.source = backend.playbackStreamUrl
                                 playbackPlayer.play()
                             }
                         }
@@ -1349,9 +1350,13 @@ Rectangle {
                                 implicitWidth: 34
                                 padding: 2
                                 text: modelData + "x"
-                                flat: playbackPlayer.playbackRate !== modelData
-                                highlighted: playbackPlayer.playbackRate === modelData
-                                onClicked: playbackPlayer.playbackRate = modelData
+                                flat: Math.abs(backend.playbackSpeed - modelData) > 0.01
+                                highlighted: Math.abs(backend.playbackSpeed - modelData) <= 0.01
+                                onClicked: {
+                                    backend.setPlaybackSpeed(modelData)
+                                    root.osdText = "⏩ Speed: " + modelData + "x"
+                                    osdTimer.restart()
+                                }
                             }
                         }
                     }
